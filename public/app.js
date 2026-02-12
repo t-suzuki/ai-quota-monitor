@@ -21,6 +21,17 @@ const THRESHOLDS_EXHAUSTED = 100;
 if (!window.quotaApi || window.quotaApi.platform !== 'electron') {
   throw new Error('Electron quotaApi bridge is required');
 }
+if (!window.UiLogic) {
+  throw new Error('UiLogic helpers are required');
+}
+const {
+  deriveServiceStatus,
+  buildTransitionEffects,
+  deriveTokenInputValue,
+  normalizeAccountToken,
+  calcElapsedPct: calcElapsedPctValue,
+  computePollingState,
+} = window.UiLogic;
 // Minimal-mode sizing — single source of truth: card width (must match CSS --minimal-card-width)
 const MINIMAL_CARD_WIDTH = 290;
 const MINIMAL_FLOOR_W = MINIMAL_CARD_WIDTH - 40;           // validation floor for clamp / drag
@@ -68,27 +79,19 @@ const log = (msg, level = '') => {
 };
 
 function classifyUtilization(pct) {
-  if (pct >= THRESHOLDS_EXHAUSTED) return 'exhausted';
-  if (pct >= state.notifySettings.thresholdCritical) return 'critical';
-  if (pct >= state.notifySettings.thresholdWarning) return 'warning';
-  return 'ok';
+  return window.UiLogic.classifyUtilization(pct, state.notifySettings, THRESHOLDS_EXHAUSTED);
 }
 
 function classifyWindows(windows) {
-  for (const w of windows) {
-    if (w.forceExhausted) { w.status = 'exhausted'; continue; }
-    w.status = classifyUtilization(w.utilization);
-  }
+  return window.UiLogic.classifyWindows(windows, state.notifySettings, THRESHOLDS_EXHAUSTED);
 }
 
 function reclassifyAllServices() {
-  const statusOrder = ['unknown', 'ok', 'warning', 'critical', 'exhausted'];
   for (const svc of Object.values(state.services)) {
     if (!svc.windows || svc.windows.length === 0) continue;
     const prev = svc.status;
     classifyWindows(svc.windows);
-    svc.status = svc.windows.reduce((a, w) =>
-      statusOrder.indexOf(w.status) > statusOrder.indexOf(a) ? w.status : a, 'ok');
+    svc.status = deriveServiceStatus(svc.windows);
     checkStatusTransition(prev, svc.status, svc.label, svc.windows);
   }
 }
@@ -116,26 +119,12 @@ function notify(title, body) {
 }
 
 function checkStatusTransition(prev, next, label, windows) {
-  if (!prev || prev === next) return;
-  const ns = state.notifySettings;
-  if ((next === 'critical' || next === 'exhausted') && ns.critical) {
-    const detail = windows.map(w => `${w.name}: ${w.utilization}%`).join(', ');
-    notify(`${label} ⚠️`, `ステータス: ${next} — ${detail}`);
+  const effects = buildTransitionEffects(prev, next, label, windows, state.notifySettings);
+  for (const item of effects.notifications) {
+    notify(item.title, item.body);
   }
-  if (next === 'warning' && prev !== 'critical' && prev !== 'exhausted' && ns.warning) {
-    const detail = windows.map(w => `${w.name}: ${w.utilization}%`).join(', ');
-    notify(`${label} ⚠`, `ステータス: ${next} — ${detail}`);
-  }
-  if (next === 'ok' && (prev === 'critical' || prev === 'exhausted') && ns.recovery) {
-    notify(`${label} ✅`, 'クォータが回復しました');
-  }
-  // Logging (always, regardless of notification settings)
-  if (next === 'critical' || next === 'exhausted') {
-    log(`${label} → ${next}`, 'crit');
-  } else if (next === 'warning' && prev !== 'critical' && prev !== 'exhausted') {
-    log(`${label} → ${next}`, 'warn');
-  } else if (next === 'ok' && (prev === 'critical' || prev === 'exhausted')) {
-    log(`${label} → ok (回復)`, 'ok');
+  for (const item of effects.logs) {
+    log(item.message, item.level);
   }
 }
 
@@ -151,9 +140,12 @@ function defaultAccount(service, idx = 0) {
 function accountFromRow(row) {
   const id = row.dataset.accountId || '';
   const name = row.querySelector('.account-name')?.value?.trim() || '';
-  const rawToken = row.querySelector('.account-token')?.value?.trim() || '';
-  const maskedToken = row.dataset.tokenMasked === '1' && rawToken === SAVED_TOKEN_MASK;
-  const token = maskedToken ? '' : rawToken;
+  const rawToken = row.querySelector('.account-token')?.value || '';
+  const token = normalizeAccountToken({
+    rawToken,
+    tokenMasked: row.dataset.tokenMasked === '1',
+    savedTokenMask: SAVED_TOKEN_MASK,
+  });
   const hasToken = row.dataset.hasToken === '1';
   return { id, name, token, hasToken };
 }
@@ -172,9 +164,13 @@ function writeAccountsToDom(service, accounts) {
     row.className = 'account-row';
     row.dataset.accountId = acc.id || makeAccountId(service);
     row.dataset.hasToken = acc.hasToken ? '1' : '0';
-    const tokenMasked = Boolean(acc.hasToken && !acc.token);
-    row.dataset.tokenMasked = tokenMasked ? '1' : '0';
-    const tokenValue = tokenMasked ? SAVED_TOKEN_MASK : (acc.token || '');
+    const tokenView = deriveTokenInputValue({
+      hasToken: acc.hasToken,
+      token: acc.token,
+      savedTokenMask: SAVED_TOKEN_MASK,
+    });
+    row.dataset.tokenMasked = tokenView.tokenMasked ? '1' : '0';
+    const tokenValue = tokenView.tokenValue;
     const tokenPlaceholder = 'eyJhbG... / sk-...';
     row.innerHTML = `
       <input class="account-name" type="text" placeholder="表示名" value="${escHtml(acc.name || '')}">
@@ -436,12 +432,7 @@ function buildBarGradient(history, status) {
 }
 
 function calcElapsedPct(resetsAt, windowSeconds) {
-  if (!resetsAt || !windowSeconds) return null;
-  const d = typeof resetsAt === 'number' ? new Date(resetsAt * 1000) : new Date(resetsAt);
-  if (isNaN(d)) return null;
-  const remainSec = Math.max(0, (d - new Date()) / 1000);
-  const elapsedSec = windowSeconds - remainSec;
-  return Math.max(0, Math.min(100, (elapsedSec / windowSeconds) * 100));
+  return calcElapsedPctValue(resetsAt, windowSeconds, Date.now());
 }
 
 // ═══════════════════════════════════════
@@ -450,16 +441,18 @@ function calcElapsedPct(resetsAt, windowSeconds) {
 function updatePollRing() {
   const el = $('#poll-ring');
   if (!el) return;
-  if (!state.polling || !state.pollStartedAt) { el.innerHTML = ''; return; }
-  const elapsed = (Date.now() - state.pollStartedAt) / 1000;
-  const remaining = Math.max(0, state.pollInterval - elapsed);
-  const fraction = remaining / state.pollInterval;
+  const timing = computePollingState({
+    polling: state.polling,
+    pollStartedAt: state.pollStartedAt,
+    pollInterval: state.pollInterval,
+    nowMs: Date.now(),
+  });
+  if (!timing) { el.innerHTML = ''; return; }
   const R = 14, C = 2 * Math.PI * R;
-  const offset = C * (1 - fraction);
-  const color = fraction > 0.3 ? 'var(--ok)' : fraction > 0.1 ? 'var(--warn)' : 'var(--crit)';
+  const offset = C * (1 - timing.fraction);
   el.innerHTML = `<svg viewBox="0 0 36 36" width="32" height="32">
     <circle cx="18" cy="18" r="${R}" fill="none" stroke="var(--bg3)" stroke-width="2.5"/>
-    <circle cx="18" cy="18" r="${R}" fill="none" stroke="${color}" stroke-width="2.5"
+    <circle cx="18" cy="18" r="${R}" fill="none" stroke="${timing.color}" stroke-width="2.5"
       stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="-${offset.toFixed(2)}"
       stroke-linecap="round" transform="rotate(-90 18 18)"/>
   </svg>`;
@@ -745,10 +738,14 @@ function updatePollStatus(msg) {
 }
 
 function updateCountdown() {
-  if (!state.polling || !state.pollStartedAt) return;
-  const elapsed = (Date.now() - state.pollStartedAt) / 1000;
-  const remaining = Math.max(0, Math.ceil(state.pollInterval - elapsed));
-  updatePollStatus(`次回更新: ${remaining}秒後`);
+  const timing = computePollingState({
+    polling: state.polling,
+    pollStartedAt: state.pollStartedAt,
+    pollInterval: state.pollInterval,
+    nowMs: Date.now(),
+  });
+  if (!timing) return;
+  updatePollStatus(`次回更新: ${timing.remainingSecLabel}秒後`);
 }
 
 function hasUsableToken(acc) {

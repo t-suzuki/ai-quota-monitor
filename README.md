@@ -123,17 +123,20 @@ ai-quota-monitor/
 │   └── preload.js
 ├── public/
 │   ├── app.js
-│   └── index.html
+│   ├── index.html
+│   └── ui-logic.js
 ├── src/
 │   └── core/
 │       ├── parsers.js
 │       ├── usage-clients.js
 │       └── usage-service.js
 ├── test/
-│   └── core/
-│       ├── parsers.test.js
-│       ├── usage-clients.test.js
-│       └── usage-service.test.js
+│   ├── core/
+│   │   ├── parsers.test.js
+│   │   ├── usage-clients.test.js
+│   │   └── usage-service.test.js
+│   └── ui/
+│       └── ui-logic.test.js
 ├── package.json
 └── README.md
 ```
