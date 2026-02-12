@@ -1,6 +1,6 @@
 # Electron Migration Tracker
 
-最終更新: 2026-02-13 03:31 (JST)
+最終更新: 2026-02-13 04:20 (JST)
 目的: Electron 移行の「計画・メモ・進捗・残件」を単一ファイルで管理する。
 
 ## 運用ルール
@@ -10,7 +10,7 @@
 - 最終的には `README.md` に必要な粒度で情報を反映する。
 
 ## 決定事項 (確定)
-- Web 版は引き続き動作可能な状態で残す。
+- 方針変更 (2026-02-13): Web 版は廃止し、Electron 専用運用にする。
 - Electron は `nodeIntegration: false` / `contextIsolation: true` / `sandbox: true` を前提にする。
 - Windowsユーザを優先する。
 - 必要 API は `preload` 経由で最小公開する。
@@ -107,9 +107,13 @@
   - アプリバージョンを `0.0.1` に変更 (`package.json` / `package-lock.json` 先頭メタデータ)。
 - 2026-02-13 03:31 JST
   - Windows 配布ターゲットに `zip` を追加し、`dist:win` で `nsis` と `zip` を同時生成する設定に変更。
+- 2026-02-13 04:20 JST
+  - リファクタ方針変更として Web 版を廃止し、Electron 専用運用へ切替。
+  - `server.js` と renderer 側 Web fallback を削除し、`window.quotaApi` 経由の取得に一本化。
+  - `src/core` を DI 対応に変更し、`node:test` ベースのモックテストを追加。
 
 ## 残件 (Open Items)
-- P7: Node/npm がある環境で `npm install` -> `npm run start:web` / `npm run start:electron` / `npm run dist:win` を実機確認。
+- P7: Node/npm がある環境で `npm install` -> `npm test` / `npm run start:electron` / `npm run dist:win` を実機確認。
 - `build.npmRebuild=false` で作成した配布物で keytar が正常に動作するか Windows 実機で検証。
 - Windows で `dist:win` 実行時に symlink 権限が必要な環境では、管理者実行または Developer Mode を前提運用とする。
 - ミニマル表示切替の UX を実機で確認 (余白ダブルクリック判定、最小サイズ、初回サイズ、サイズ記憶)。
@@ -119,7 +123,7 @@
 
 ## メモ
 - `public/index.html` のロジックは `public/app.js` へ分割済み。
-- 既存 Web の API エンドポイント (`/api/claude`, `/api/codex`) は維持予定。
+- 既存 Web API エンドポイントは廃止し、取得処理は Electron main 経由に一本化。
 - 初回は「実行可能な統合」を優先し、見た目改善は後段に回す。
 
 ## 直近アクション

@@ -22,39 +22,53 @@ function extractHeaders(headers) {
   return out;
 }
 
-async function fetchUsageRaw(url, headers) {
-  const upstream = await fetch(url, { headers });
-  const contentType = upstream.headers.get('content-type') || 'application/json';
-  const body = await upstream.text();
+function createUsageClient(deps = {}) {
+  const fetchImpl = deps.fetchImpl || fetch;
+
+  async function fetchUsageRaw(url, headers) {
+    const upstream = await fetchImpl(url, { headers });
+    const contentType = upstream.headers.get('content-type') || 'application/json';
+    const body = await upstream.text();
+    return {
+      ok: upstream.ok,
+      status: upstream.status,
+      contentType,
+      body,
+      headers: extractHeaders(upstream.headers),
+    };
+  }
+
+  async function fetchClaudeUsageRaw(token) {
+    assertToken(token);
+    return fetchUsageRaw('https://api.anthropic.com/api/oauth/usage', {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'anthropic-beta': ANTHROPIC_OAUTH_BETA,
+    });
+  }
+
+  async function fetchCodexUsageRaw(token) {
+    assertToken(token);
+    return fetchUsageRaw('https://chatgpt.com/backend-api/wham/usage', {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    });
+  }
+
   return {
-    ok: upstream.ok,
-    status: upstream.status,
-    contentType,
-    body,
-    headers: extractHeaders(upstream.headers),
+    fetchUsageRaw,
+    fetchClaudeUsageRaw,
+    fetchCodexUsageRaw,
   };
 }
 
-async function fetchClaudeUsageRaw(token) {
-  assertToken(token);
-  return fetchUsageRaw('https://api.anthropic.com/api/oauth/usage', {
-    Authorization: `Bearer ${token}`,
-    Accept: 'application/json',
-    'anthropic-beta': ANTHROPIC_OAUTH_BETA,
-  });
-}
-
-async function fetchCodexUsageRaw(token) {
-  assertToken(token);
-  return fetchUsageRaw('https://chatgpt.com/backend-api/wham/usage', {
-    Authorization: `Bearer ${token}`,
-    Accept: 'application/json',
-  });
-}
+const { fetchUsageRaw, fetchClaudeUsageRaw, fetchCodexUsageRaw } = createUsageClient();
 
 module.exports = {
   ANTHROPIC_OAUTH_BETA,
+  createUsageClient,
   safeJsonParse,
+  fetchUsageRaw,
   fetchClaudeUsageRaw,
   fetchCodexUsageRaw,
 };

@@ -18,23 +18,18 @@ const state = {
 };
 
 const THRESHOLDS_EXHAUSTED = 100;
-const IS_ELECTRON = Boolean(window.quotaApi && window.quotaApi.platform === 'electron');
+if (!window.quotaApi || window.quotaApi.platform !== 'electron') {
+  throw new Error('Electron quotaApi bridge is required');
+}
 // Minimal-mode sizing — single source of truth: card width (must match CSS --minimal-card-width)
 const MINIMAL_CARD_WIDTH = 290;
-const MINIMAL_PAD = 16;                                    // .container padding in minimal mode (8px × 2)
 const MINIMAL_FLOOR_W = MINIMAL_CARD_WIDTH - 40;           // validation floor for clamp / drag
 const SAVED_TOKEN_MASK = '********************';
 const SESSION_KEYS = {
-  accounts: 'qm-accounts',
-  interval: 'qm-interval',
   services: 'qm-services',
   raw: 'qm-raw',
   history: 'qm-history',
   fetchedAt: 'qm-fetched-at',
-  pollState: 'qm-poll-state',
-  legacyClaude: 'qm-claude',
-  legacyCodex: 'qm-codex',
-  notifySettings: 'qm-notify-settings',
 };
 const SERVICE_META = {
   claude: {
@@ -177,7 +172,7 @@ function writeAccountsToDom(service, accounts) {
     row.className = 'account-row';
     row.dataset.accountId = acc.id || makeAccountId(service);
     row.dataset.hasToken = acc.hasToken ? '1' : '0';
-    const tokenMasked = Boolean(IS_ELECTRON && acc.hasToken && !acc.token);
+    const tokenMasked = Boolean(acc.hasToken && !acc.token);
     row.dataset.tokenMasked = tokenMasked ? '1' : '0';
     const tokenValue = tokenMasked ? SAVED_TOKEN_MASK : (acc.token || '');
     const tokenPlaceholder = 'eyJhbG... / sk-...';
@@ -188,7 +183,7 @@ function writeAccountsToDom(service, accounts) {
     `;
     row.querySelector('.btn-remove-account').addEventListener('click', async () => {
       const removed = accountFromRow(row);
-      if (IS_ELECTRON && removed.id) {
+      if (removed.id) {
         try {
           await window.quotaApi.deleteAccount({ service, id: removed.id });
         } catch (e) {
@@ -236,14 +231,6 @@ function collectAccounts() {
   return collected;
 }
 
-function scrubAccountsForSession(accounts) {
-  if (!IS_ELECTRON) return accounts;
-  return {
-    claude: (accounts.claude || []).map((x) => ({ id: x.id, name: x.name, hasToken: Boolean(x.hasToken) })),
-    codex: (accounts.codex || []).map((x) => ({ id: x.id, name: x.name, hasToken: Boolean(x.hasToken) })),
-  };
-}
-
 function upsertDomTokenState(service, id, hasToken) {
   const list = $(SERVICE_META[service].listId);
   const row = Array.from(list.querySelectorAll('.account-row'))
@@ -264,18 +251,8 @@ function upsertDomTokenState(service, id, hasToken) {
 }
 
 async function resolveAppVersion() {
-  if (IS_ELECTRON) {
-    try {
-      return await window.quotaApi.getVersion();
-    } catch {
-      return '';
-    }
-  }
   try {
-    const resp = await fetch('/api/version', { cache: 'no-store' });
-    if (!resp.ok) return '';
-    const data = await resp.json();
-    return typeof data?.version === 'string' ? data.version : '';
+    return await window.quotaApi.getVersion();
   } catch {
     return '';
   }
@@ -296,24 +273,19 @@ async function persistSetup() {
     const accounts = collectAccounts();
     const interval = Math.max(30, parseInt($('#poll-interval').value, 10) || 120);
 
-    if (IS_ELECTRON) {
-      for (const service of Object.keys(SERVICE_META)) {
-        for (const acc of accounts[service]) {
-          const saved = await window.quotaApi.saveAccount({
-            service,
-            id: acc.id,
-            name: acc.name,
-            token: acc.token || undefined,
-          });
-          acc.hasToken = Boolean(saved.hasToken);
-          upsertDomTokenState(service, acc.id, acc.hasToken);
-        }
+    for (const service of Object.keys(SERVICE_META)) {
+      for (const acc of accounts[service]) {
+        const saved = await window.quotaApi.saveAccount({
+          service,
+          id: acc.id,
+          name: acc.name,
+          token: acc.token || undefined,
+        });
+        acc.hasToken = Boolean(saved.hasToken);
+        upsertDomTokenState(service, acc.id, acc.hasToken);
       }
-      await window.quotaApi.setSettings({ pollInterval: interval });
     }
-
-    sessionStorage.setItem(SESSION_KEYS.accounts, JSON.stringify(scrubAccountsForSession(accounts)));
-    sessionStorage.setItem(SESSION_KEYS.interval, String(interval));
+    await window.quotaApi.setSettings({ pollInterval: interval });
     didLogPersistError = false;
   } catch (e) {
     if (!didLogPersistError) {
@@ -338,28 +310,14 @@ function persistPollingState() {
     interval: state.pollInterval,
   };
 
-  if (IS_ELECTRON) {
-    window.quotaApi.setPollingState(payload).then(() => {
-      didLogPollingPersistError = false;
-    }).catch((e) => {
-      if (!didLogPollingPersistError) {
-        log(`ポーリング状態保存エラー: ${e.message || e}`, 'warn');
-        didLogPollingPersistError = true;
-      }
-    });
-    return;
-  }
-
-  try {
-    if (!payload.active) {
-      sessionStorage.removeItem(SESSION_KEYS.pollState);
-      return;
+  window.quotaApi.setPollingState(payload).then(() => {
+    didLogPollingPersistError = false;
+  }).catch((e) => {
+    if (!didLogPollingPersistError) {
+      log(`ポーリング状態保存エラー: ${e.message || e}`, 'warn');
+      didLogPollingPersistError = true;
     }
-    sessionStorage.setItem(SESSION_KEYS.pollState, JSON.stringify({
-      active: true,
-      interval: payload.interval,
-    }));
-  } catch {}
+  });
 }
 
 let persistTimer = null;
@@ -371,193 +329,48 @@ function queuePersistSetup() {
 }
 
 // ═══════════════════════════════════════
-// API proxy base URL detection
-// ═══════════════════════════════════════
-function apiBase() {
-  // Works both in Vercel deployment and local dev
-  return window.location.origin;
-}
-
-// ═══════════════════════════════════════
-// Claude Code fetcher
-// ═══════════════════════════════════════
-async function fetchClaude(token) {
-  if (IS_ELECTRON) throw new Error('fetchClaude(token) should not run in Electron mode');
-  const resp = await fetch(`${apiBase()}/api/claude`, {
-    headers: { 'x-quota-token': token },
-  });
-  const data = await resp.json();
-  if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-  return data;
-}
-
-function parseClaude(data) {
-  const windows = [];
-  const labels = {
-    five_hour: '5時間',
-    seven_day: '7日間',
-    seven_day_opus: '7日間 (Opus)',
-    seven_day_sonnet: '7日間 (Sonnet)',
-    seven_day_oauth_apps: '7日間 (OAuth Apps)',
-    seven_day_cowork: '7日間 (Cowork)',
-  };
-  const winSecMap = {
-    five_hour: 18000,
-    seven_day: 604800, seven_day_opus: 604800, seven_day_sonnet: 604800,
-    seven_day_oauth_apps: 604800, seven_day_cowork: 604800,
-  };
-  const preferredOrder = Object.keys(labels);
-  const pushed = new Set();
-  const pushWindow = (key, name) => {
-    const w = data[key];
-    if (!w || typeof w !== 'object') return;
-    if (typeof w.utilization !== 'number') return;
-    windows.push({
-      name,
-      utilization: w.utilization,
-      resetsAt: w.resets_at || null,
-      status: null,
-      windowSeconds: winSecMap[key] || (key.startsWith('seven_day') ? 604800 : key.includes('hour') ? 18000 : null),
-    });
-    pushed.add(key);
-  };
-
-  for (const key of preferredOrder) {
-    pushWindow(key, labels[key]);
-  }
-  for (const [key, value] of Object.entries(data)) {
-    if (pushed.has(key)) continue;
-    if (!value || typeof value !== 'object') continue;
-    if (typeof value.utilization !== 'number') continue;
-    const name = key.replaceAll('_', ' ');
-    pushWindow(key, name);
-  }
-  return windows;
-}
-
-// ═══════════════════════════════════════
-// Codex fetcher
-// ═══════════════════════════════════════
-async function fetchCodex(token) {
-  if (IS_ELECTRON) throw new Error('fetchCodex(token) should not run in Electron mode');
-  const resp = await fetch(`${apiBase()}/api/codex`, {
-    headers: { 'x-quota-token': token },
-  });
-
-  // Capture upstream headers for debugging
-  const upstreamHeaders = {};
-  for (const [k, v] of resp.headers.entries()) {
-    if (k.startsWith('x-upstream-')) upstreamHeaders[k] = v;
-  }
-
-  const text = await resp.text();
-  let data;
-  try { data = JSON.parse(text); } catch { data = { _raw: text }; }
-  data._upstreamHeaders = upstreamHeaders;
-
-  if (!resp.ok) throw new Error(data.error || data.detail || `HTTP ${resp.status}`);
-  return data;
-}
-
-function parseCodex(data) {
-  const windows = [];
-  const toNumber = (v) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
-  const normalizeWindowName = (seconds, fallback) => {
-    if (fallback) return fallback;
-    const sec = toNumber(seconds);
-    if (sec === 18000) return '5時間';
-    if (sec === 604800) return '7日間';
-    if (sec === 86400) return '24時間';
-    if (!sec || sec <= 0) return 'ウィンドウ';
-    if (sec % 86400 === 0) return `${Math.round(sec / 86400)}日間`;
-    return `${Math.round(sec / 3600)}時間`;
-  };
-  const pushWindow = (windowData, label, parent) => {
-    if (!windowData || typeof windowData !== 'object') return;
-    const utilization =
-      toNumber(windowData.used_percent ?? windowData.usedPercent ?? windowData.utilization) ??
-      (() => {
-        const used = toNumber(windowData.used);
-        const limit = toNumber(windowData.limit);
-        if (used !== null && limit && limit > 0) return (used / limit) * 100;
-        return 0;
-      })();
-    const limitReached = windowData.limit_reached ?? windowData.limitReached ?? parent?.limit_reached ?? parent?.limitReached;
-    const allowed = windowData.allowed ?? parent?.allowed;
-    const forceExhausted = limitReached === true || allowed === false;
-    const ws = toNumber(windowData.limit_window_seconds ?? windowData.limitWindowSeconds) || null;
-    windows.push({
-      name: normalizeWindowName(ws, label),
-      utilization,
-      resetsAt: windowData.reset_at ?? windowData.resetAt ?? windowData.resets_at ?? windowData.resetsAt ?? null,
-      status: null,
-      forceExhausted,
-      windowSeconds: ws,
-    });
-  };
-  const parseWhamRateLimit = (block, prefix) => {
-    if (!block || typeof block !== 'object') return;
-    const primary = block.primary_window ?? block.primaryWindow ?? block.primary;
-    const secondary = block.secondary_window ?? block.secondaryWindow ?? block.secondary;
-    const primaryLabel = prefix ? `${prefix} (primary)` : null;
-    const secondaryLabel = prefix ? `${prefix} (secondary)` : null;
-    pushWindow(primary, primaryLabel, block);
-    pushWindow(secondary, secondaryLabel, block);
-  };
-
-  // Current wham/usage shape:
-  // {
-  //   rate_limit: { primary_window, secondary_window, allowed, limit_reached },
-  //   code_review_rate_limit: { primary_window, ... },
-  //   additional_rate_limits: [...]
-  // }
-  parseWhamRateLimit(data.rate_limit, null);
-  parseWhamRateLimit(data.code_review_rate_limit, 'Code Review');
-  if (Array.isArray(data.additional_rate_limits)) {
-    for (const [idx, block] of data.additional_rate_limits.entries()) {
-      parseWhamRateLimit(block, block?.name || `Additional ${idx + 1}`);
-    }
-  } else {
-    parseWhamRateLimit(data.additional_rate_limits, 'Additional');
-  }
-
-  // Backward-compatible fallback parsers
-  if (windows.length === 0) {
-    const rl = data.rate_limits || data.rateLimits || data;
-    if (rl.primary || rl.secondary) {
-      pushWindow(rl.primary, '5時間', rl);
-      pushWindow(rl.secondary, '7日間', rl);
-    }
-  }
-  if (windows.length === 0) {
-    const arr = data.windows || data.limits || data.rate_limits;
-    if (Array.isArray(arr)) {
-      for (const w of arr) {
-        pushWindow(w, w.name || w.label || w.window || null, null);
-      }
-    }
-  }
-  if (windows.length === 0) {
-    for (const [key, name] of [['five_hour', '5時間'], ['fiveHour', '5時間'], ['weekly', '7日間'], ['seven_day', '7日間']]) {
-      if (data[key] && typeof data[key] === 'object') {
-        pushWindow(data[key], name, data[key]);
-      }
-    }
-  }
-
-  if (windows.length === 0) {
-    windows.push({ name: '(不明な形式)', utilization: 0, resetsAt: null, status: 'unknown' });
-  }
-
-  return windows;
-}
-
-// ═══════════════════════════════════════
 // Poll orchestrator
 // ═══════════════════════════════════════
+async function pollServiceAccounts(service, accounts, nextServices, worstOf) {
+  const meta = SERVICE_META[service];
+  let anySuccess = false;
+
+  for (const acc of accounts) {
+    if (!hasUsableToken(acc)) continue;
+    const serviceKey = `${service}:${acc.id}`;
+    const label = `${meta.label}: ${acc.name}`;
+
+    try {
+      const result = await window.quotaApi.fetchUsage({
+        service,
+        id: acc.id,
+        name: acc.name,
+        token: acc.token || undefined,
+      });
+      const data = result.raw;
+      const windows = result.windows;
+      classifyWindows(windows);
+      const worstStatus = worstOf(windows);
+      state.rawResponses[serviceKey] = data;
+      for (const w of windows) {
+        recordHistory(`${serviceKey}:${w.name}`, w.utilization);
+      }
+
+      const prev = state.services[serviceKey]?.status;
+      nextServices[serviceKey] = { label, windows, status: worstStatus };
+      checkStatusTransition(prev, worstStatus, label, windows);
+      anySuccess = true;
+      log(`${label} 取得成功: ${windows.map(w => `${w.name}=${w.utilization}%`).join(', ')}`);
+      upsertDomTokenState(service, acc.id, true);
+    } catch (e) {
+      nextServices[serviceKey] = { label, windows: [], status: 'error', error: e.message };
+      log(`${label} エラー: ${e.message}`, 'warn');
+    }
+  }
+
+  return anySuccess;
+}
+
 async function pollAll() {
   state.accounts = collectAccounts();
   queuePersistSetup();
@@ -568,85 +381,8 @@ async function pollAll() {
   const worstOf = (windows) => windows.reduce((a, w) => (
     statusOrder.indexOf(w.status) > statusOrder.indexOf(a) ? w.status : a
   ), 'ok');
-  for (const acc of state.accounts.claude) {
-    if (!hasUsableToken(acc)) continue;
-    const serviceKey = `claude:${acc.id}`;
-    const label = `${SERVICE_META.claude.label}: ${acc.name}`;
-    try {
-      let data;
-      let windows;
-      let worstStatus;
-      if (IS_ELECTRON) {
-        const result = await window.quotaApi.fetchUsage({
-          service: 'claude',
-          id: acc.id,
-          name: acc.name,
-          token: acc.token || undefined,
-        });
-        data = result.raw;
-        windows = result.windows;
-        classifyWindows(windows);
-        worstStatus = worstOf(windows);
-      } else {
-        data = await fetchClaude(acc.token);
-        windows = parseClaude(data);
-        classifyWindows(windows);
-        worstStatus = worstOf(windows);
-      }
-      state.rawResponses[serviceKey] = data;
-      for (const w of windows) { recordHistory(`${serviceKey}:${w.name}`, w.utilization); }
-
-      const prev = state.services[serviceKey]?.status;
-      nextServices[serviceKey] = { label, windows, status: worstStatus };
-      checkStatusTransition(prev, worstStatus, label, windows);
-      anySuccess = true;
-      log(`${label} 取得成功: ${windows.map(w => `${w.name}=${w.utilization}%`).join(', ')}`);
-      if (IS_ELECTRON) upsertDomTokenState('claude', acc.id, true);
-    } catch (e) {
-      nextServices[serviceKey] = { label, windows: [], status: 'error', error: e.message };
-      log(`${label} エラー: ${e.message}`, 'warn');
-    }
-  }
-
-  for (const acc of state.accounts.codex) {
-    if (!hasUsableToken(acc)) continue;
-    const serviceKey = `codex:${acc.id}`;
-    const label = `${SERVICE_META.codex.label}: ${acc.name}`;
-    try {
-      let data;
-      let windows;
-      let worstStatus;
-      if (IS_ELECTRON) {
-        const result = await window.quotaApi.fetchUsage({
-          service: 'codex',
-          id: acc.id,
-          name: acc.name,
-          token: acc.token || undefined,
-        });
-        data = result.raw;
-        windows = result.windows;
-        classifyWindows(windows);
-        worstStatus = worstOf(windows);
-      } else {
-        data = await fetchCodex(acc.token);
-        windows = parseCodex(data);
-        classifyWindows(windows);
-        worstStatus = worstOf(windows);
-      }
-      state.rawResponses[serviceKey] = data;
-      for (const w of windows) { recordHistory(`${serviceKey}:${w.name}`, w.utilization); }
-
-      const prev = state.services[serviceKey]?.status;
-      nextServices[serviceKey] = { label, windows, status: worstStatus };
-      checkStatusTransition(prev, worstStatus, label, windows);
-      anySuccess = true;
-      log(`${label} 取得成功: ${windows.map(w => `${w.name}=${w.utilization}%`).join(', ')}`);
-      if (IS_ELECTRON) upsertDomTokenState('codex', acc.id, true);
-    } catch (e) {
-      nextServices[serviceKey] = { label, windows: [], status: 'error', error: e.message };
-      log(`${label} エラー: ${e.message}`, 'warn');
-    }
-  }
+  anySuccess = (await pollServiceAccounts('claude', state.accounts.claude, nextServices, worstOf)) || anySuccess;
+  anySuccess = (await pollServiceAccounts('codex', state.accounts.codex, nextServices, worstOf)) || anySuccess;
 
   state.services = nextServices;
 
@@ -883,8 +619,6 @@ async function toggleWindowModeByGesture() {
   state.windowMode = nextMode;
   applyMinimalModeUI(nextMode === 'minimal');
 
-  if (!IS_ELECTRON) return;
-
   const payload = { mode: nextMode };
   if (nextMode === 'minimal') {
     const metrics = computeMinimalWindowMetrics();
@@ -922,8 +656,6 @@ function isNearWindowEdge(event) {
 }
 
 function setupMinimalWindowDragHandlers() {
-  if (!IS_ELECTRON) return;
-
   const endDrag = () => {
     minimalDragState.active = false;
   };
@@ -1020,7 +752,7 @@ function updateCountdown() {
 }
 
 function hasUsableToken(acc) {
-  return IS_ELECTRON ? (acc.hasToken || Boolean(acc.token)) : Boolean(acc.token);
+  return acc.hasToken || Boolean(acc.token);
 }
 
 function hasAnyUsableToken(accounts) {
@@ -1051,55 +783,33 @@ function ensureSetupOpenIfMissingToken(accounts) {
 // Init
 // ═══════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
-  let restored = null;
   let restoredPollState = null;
 
   const version = await resolveAppVersion();
   const versionEl = $('#app-version');
   if (versionEl && version) versionEl.textContent = `v${version}`;
 
-  if (IS_ELECTRON) {
-    try {
-      const snapshot = await window.quotaApi.listAccounts();
-      state.accounts.claude = Array.isArray(snapshot?.claude) ? snapshot.claude.map((x) => ({ ...x, token: '' })) : [];
-      state.accounts.codex = Array.isArray(snapshot?.codex) ? snapshot.codex.map((x) => ({ ...x, token: '' })) : [];
-      const settings = await window.quotaApi.getSettings();
-      if (settings?.pollInterval) $('#poll-interval').value = String(settings.pollInterval);
-      if (settings?.notifySettings) {
-        const ns = settings.notifySettings;
-        if (typeof ns.critical === 'boolean') state.notifySettings.critical = ns.critical;
-        if (typeof ns.recovery === 'boolean') state.notifySettings.recovery = ns.recovery;
-        if (typeof ns.warning === 'boolean') state.notifySettings.warning = ns.warning;
-        if (typeof ns.thresholdWarning === 'number') state.notifySettings.thresholdWarning = ns.thresholdWarning;
-        if (typeof ns.thresholdCritical === 'number') state.notifySettings.thresholdCritical = ns.thresholdCritical;
-      }
-      restoredPollState = await window.quotaApi.getPollingState();
-      const windowState = await window.quotaApi.getWindowState();
-      state.windowMode = windowState?.mode === 'minimal' ? 'minimal' : 'normal';
-      state.hasSavedMinimalBounds = Boolean(windowState?.minimalBounds);
-      applyMinimalModeUI(state.windowMode === 'minimal');
-    } catch (e) {
-      log(`Electron 初期化に失敗: ${e.message || e}`, 'warn');
+  try {
+    const snapshot = await window.quotaApi.listAccounts();
+    state.accounts.claude = Array.isArray(snapshot?.claude) ? snapshot.claude.map((x) => ({ ...x, token: '' })) : [];
+    state.accounts.codex = Array.isArray(snapshot?.codex) ? snapshot.codex.map((x) => ({ ...x, token: '' })) : [];
+    const settings = await window.quotaApi.getSettings();
+    if (settings?.pollInterval) $('#poll-interval').value = String(settings.pollInterval);
+    if (settings?.notifySettings) {
+      const ns = settings.notifySettings;
+      if (typeof ns.critical === 'boolean') state.notifySettings.critical = ns.critical;
+      if (typeof ns.recovery === 'boolean') state.notifySettings.recovery = ns.recovery;
+      if (typeof ns.warning === 'boolean') state.notifySettings.warning = ns.warning;
+      if (typeof ns.thresholdWarning === 'number') state.notifySettings.thresholdWarning = ns.thresholdWarning;
+      if (typeof ns.thresholdCritical === 'number') state.notifySettings.thresholdCritical = ns.thresholdCritical;
     }
-  } else {
-    try {
-      const raw = sessionStorage.getItem(SESSION_KEYS.accounts);
-      restored = raw ? JSON.parse(raw) : null;
-      if (restored && typeof restored === 'object') {
-        state.accounts.claude = Array.isArray(restored.claude) ? restored.claude : [];
-        state.accounts.codex = Array.isArray(restored.codex) ? restored.codex : [];
-      } else {
-        // Backward compatibility with old single-token storage.
-        const legacyClaude = sessionStorage.getItem(SESSION_KEYS.legacyClaude) || '';
-        const legacyCodex = sessionStorage.getItem(SESSION_KEYS.legacyCodex) || '';
-        if (legacyClaude) state.accounts.claude = [{ ...defaultAccount('claude', 0), token: legacyClaude }];
-        if (legacyCodex) state.accounts.codex = [{ ...defaultAccount('codex', 0), token: legacyCodex }];
-      }
-      const iv = sessionStorage.getItem(SESSION_KEYS.interval);
-      if (iv) $('#poll-interval').value = iv;
-      const psRaw = sessionStorage.getItem(SESSION_KEYS.pollState);
-      restoredPollState = psRaw ? JSON.parse(psRaw) : null;
-    } catch {}
+    restoredPollState = await window.quotaApi.getPollingState();
+    const windowState = await window.quotaApi.getWindowState();
+    state.windowMode = windowState?.mode === 'minimal' ? 'minimal' : 'normal';
+    state.hasSavedMinimalBounds = Boolean(windowState?.minimalBounds);
+    applyMinimalModeUI(state.windowMode === 'minimal');
+  } catch (e) {
+    log(`Electron 初期化に失敗: ${e.message || e}`, 'warn');
   }
 
   if (state.accounts.claude.length === 0) state.accounts.claude = [defaultAccount('claude', 0)];
@@ -1107,10 +817,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   writeAccountsToDom('claude', state.accounts.claude);
   writeAccountsToDom('codex', state.accounts.codex);
 
-  if (IS_ELECTRON) {
-    const subtitle = document.querySelector('.subtitle');
-    if (subtitle) subtitle.textContent = 'トークンは OS キーチェーンに保存されます';
-  }
+  const subtitle = document.querySelector('.subtitle');
+  if (subtitle) subtitle.textContent = 'トークンは OS キーチェーンに保存されます';
 
   ensureSetupOpenIfMissingToken(state.accounts);
 
@@ -1151,20 +859,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     pollAll().then(() => updatePollStatus('取得完了'));
   });
 
-  // Notification settings — restore from sessionStorage (non-Electron fallback)
-  if (!IS_ELECTRON) {
-    try {
-      const nsRaw = sessionStorage.getItem(SESSION_KEYS.notifySettings);
-      if (nsRaw) {
-        const ns = JSON.parse(nsRaw);
-        if (typeof ns.critical === 'boolean') state.notifySettings.critical = ns.critical;
-        if (typeof ns.recovery === 'boolean') state.notifySettings.recovery = ns.recovery;
-        if (typeof ns.warning === 'boolean') state.notifySettings.warning = ns.warning;
-        if (typeof ns.thresholdWarning === 'number') state.notifySettings.thresholdWarning = ns.thresholdWarning;
-        if (typeof ns.thresholdCritical === 'number') state.notifySettings.thresholdCritical = ns.thresholdCritical;
-      }
-    } catch {}
-  }
   $('#notify-critical').checked = state.notifySettings.critical;
   $('#notify-recovery').checked = state.notifySettings.recovery;
   $('#notify-warning').checked = state.notifySettings.warning;
@@ -1176,11 +870,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.notifySettings.warning = $('#notify-warning').checked;
     state.notifySettings.thresholdWarning = Math.max(1, Math.min(99, parseInt($('#threshold-warning').value, 10) || 75));
     state.notifySettings.thresholdCritical = Math.max(1, Math.min(99, parseInt($('#threshold-critical').value, 10) || 90));
-    if (IS_ELECTRON) {
-      window.quotaApi.setSettings({ notifySettings: state.notifySettings }).catch(() => {});
-    } else {
-      try { sessionStorage.setItem(SESSION_KEYS.notifySettings, JSON.stringify(state.notifySettings)); } catch {}
-    }
+    window.quotaApi.setSettings({ notifySettings: state.notifySettings }).catch(() => {});
     reclassifyAllServices();
     render();
   };
@@ -1202,7 +892,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $(SERVICE_META.claude.addBtnId).addEventListener('click', () => addAccountRow('claude'));
   $(SERVICE_META.codex.addBtnId).addEventListener('click', () => addAccountRow('codex'));
   $('#poll-interval').addEventListener('change', queuePersistSetup);
-  if (!restored) queuePersistSetup();
+  queuePersistSetup();
 
   document.addEventListener('dblclick', (event) => {
     if (!isMinimalToggleTarget(event.target)) return;
@@ -1213,7 +903,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   ensureServicePlaceholders();
   render();
 
-  if (IS_ELECTRON && state.windowMode === 'minimal') {
+  if (state.windowMode === 'minimal') {
     const metrics = computeMinimalWindowMetrics();
     window.quotaApi.setWindowMode({
       mode: 'minimal',

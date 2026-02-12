@@ -8,9 +8,9 @@
   },
   "main": "electron/main.js",
   "scripts": {
-    "start": "node server.js",
-    "start:web": "node server.js",
+    "start": "electron .",
     "start:electron": "electron .",
+    "test": "node --test \"test/**/*.test.js\"",
     "dist:win": "electron-builder --win nsis zip"
   },
   "dependencies": {
@@ -28,7 +28,6 @@
       "electron/**/*",
       "public/**/*",
       "src/**/*",
-      "server.js",
       "package.json",
       "README.md"
     ],

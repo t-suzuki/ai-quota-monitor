@@ -16,6 +16,7 @@ const MINIMAL_CARD_WIDTH = 290;
 const MINIMAL_PAD = 16;                                            // .container padding in minimal mode (8px × 2)
 const MINIMAL_MIN_W = MINIMAL_CARD_WIDTH + MINIMAL_PAD;            // 306 — minimum window width
 const MINIMAL_FLOOR_W = MINIMAL_CARD_WIDTH - 40;                   // 250 — validation floor
+const MINIMAL_FLOOR_H = 220;
 const MINIMAL_WINDOW_DEFAULT = { width: MINIMAL_MIN_W + 74, height: 420 };
 const MINIMAL_WINDOW_MIN_DEFAULT = { width: MINIMAL_MIN_W, height: 240 };
 
@@ -104,7 +105,7 @@ function normalizeStore(parsed) {
   const minimalMinHeight = clampInt(
     windowRaw.minimalMinHeight,
     MINIMAL_WINDOW_MIN_DEFAULT.height,
-    MINIMAL_FLOOR_W,
+    MINIMAL_FLOOR_H,
     4096
   );
 
@@ -414,7 +415,7 @@ async function setWindowMode(payload) {
     if (Number.isFinite(minWidth) && minWidth >= MINIMAL_FLOOR_W) {
       ws.minimalMinWidth = Math.floor(minWidth);
     }
-    if (Number.isFinite(minHeight) && minHeight >= 220) {
+    if (Number.isFinite(minHeight) && minHeight >= MINIMAL_FLOOR_H) {
       ws.minimalMinHeight = Math.floor(minHeight);
     }
 
@@ -496,7 +497,7 @@ function setWindowPosition(payload) {
 
   const width = optionalInt(payload?.width);
   const height = optionalInt(payload?.height);
-  if (width !== null && height !== null && width >= MINIMAL_FLOOR_W && height >= MINIMAL_FLOOR_W) {
+  if (width !== null && height !== null && width >= MINIMAL_FLOOR_W && height >= MINIMAL_FLOOR_H) {
     win.setBounds({ x, y, width, height }, false);
   } else {
     win.setPosition(x, y);
