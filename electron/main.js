@@ -10,8 +10,14 @@ const SERVICES = new Set(['claude', 'codex']);
 
 const NORMAL_WINDOW_DEFAULT = { width: 1100, height: 840 };
 const NORMAL_WINDOW_MIN = { width: 980, height: 700 };
-const MINIMAL_WINDOW_DEFAULT = { width: 560, height: 420 };
-const MINIMAL_WINDOW_MIN_DEFAULT = { width: 420, height: 240 };
+
+// Minimal-mode sizing — single source of truth: card width (must match CSS --minimal-card-width & app.js)
+const MINIMAL_CARD_WIDTH = 290;
+const MINIMAL_PAD = 16;                                            // .container padding in minimal mode (8px × 2)
+const MINIMAL_MIN_W = MINIMAL_CARD_WIDTH + MINIMAL_PAD;            // 306 — minimum window width
+const MINIMAL_FLOOR_W = MINIMAL_CARD_WIDTH - 40;                   // 250 — validation floor
+const MINIMAL_WINDOW_DEFAULT = { width: MINIMAL_MIN_W + 74, height: 420 };
+const MINIMAL_WINDOW_MIN_DEFAULT = { width: MINIMAL_MIN_W, height: 240 };
 
 let mainWindow = null;
 let isSwitchingWindow = false;
@@ -61,6 +67,13 @@ function defaultStore() {
         minimalMinWidth: MINIMAL_WINDOW_MIN_DEFAULT.width,
         minimalMinHeight: MINIMAL_WINDOW_MIN_DEFAULT.height,
       },
+      notifySettings: {
+        critical: true,
+        recovery: true,
+        warning: false,
+        thresholdWarning: 75,
+        thresholdCritical: 90,
+      },
     },
   };
 }
@@ -85,13 +98,13 @@ function normalizeStore(parsed) {
   const minimalMinWidth = clampInt(
     windowRaw.minimalMinWidth,
     MINIMAL_WINDOW_MIN_DEFAULT.width,
-    320,
+    MINIMAL_FLOOR_W,
     4096
   );
   const minimalMinHeight = clampInt(
     windowRaw.minimalMinHeight,
     MINIMAL_WINDOW_MIN_DEFAULT.height,
-    220,
+    MINIMAL_FLOOR_W,
     4096
   );
 
@@ -105,6 +118,15 @@ function normalizeStore(parsed) {
   const minimalBounds = minimalBoundsRaw
     ? sanitizeBounds(minimalBoundsRaw, minimalMinWidth, minimalMinHeight, MINIMAL_WINDOW_DEFAULT)
     : null;
+
+  const nsRaw = settings.notifySettings || {};
+  const notifySettings = {
+    critical: typeof nsRaw.critical === 'boolean' ? nsRaw.critical : base.settings.notifySettings.critical,
+    recovery: typeof nsRaw.recovery === 'boolean' ? nsRaw.recovery : base.settings.notifySettings.recovery,
+    warning: typeof nsRaw.warning === 'boolean' ? nsRaw.warning : base.settings.notifySettings.warning,
+    thresholdWarning: clampInt(nsRaw.thresholdWarning, base.settings.notifySettings.thresholdWarning, 1, 99),
+    thresholdCritical: clampInt(nsRaw.thresholdCritical, base.settings.notifySettings.thresholdCritical, 1, 99),
+  };
 
   return {
     services: {
@@ -121,6 +143,7 @@ function normalizeStore(parsed) {
         minimalMinWidth,
         minimalMinHeight,
       },
+      notifySettings,
     },
   };
 }
@@ -233,6 +256,17 @@ async function setSettings(payload) {
     if (!store.settings.pollingState.active) {
       store.settings.pollingState.interval = next;
     }
+  }
+  if (payload?.notifySettings && typeof payload.notifySettings === 'object') {
+    const ns = payload.notifySettings;
+    const current = store.settings.notifySettings;
+    if (typeof ns.critical === 'boolean') current.critical = ns.critical;
+    if (typeof ns.recovery === 'boolean') current.recovery = ns.recovery;
+    if (typeof ns.warning === 'boolean') current.warning = ns.warning;
+    const tw = Number(ns.thresholdWarning);
+    if (Number.isFinite(tw) && tw >= 1 && tw <= 99) current.thresholdWarning = Math.floor(tw);
+    const tc = Number(ns.thresholdCritical);
+    if (Number.isFinite(tc) && tc >= 1 && tc <= 99) current.thresholdCritical = Math.floor(tc);
   }
   await writeStore(store);
   return store.settings;
@@ -351,6 +385,8 @@ async function createMainWindow(forcedMode = null) {
     minHeight,
     frame: !isMinimal,
     autoHideMenuBar: isMinimal,
+    alwaysOnTop: isMinimal,
+    backgroundColor: '#0d1117',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -360,6 +396,7 @@ async function createMainWindow(forcedMode = null) {
   });
 
   win.setMenuBarVisibility(!isMinimal);
+  win.setAlwaysOnTop(isMinimal, 'floating');
   attachBoundsPersistence(win, mode);
   await win.loadFile(path.join(__dirname, '..', 'public', 'index.html'));
   return win;
@@ -374,7 +411,7 @@ async function setWindowMode(payload) {
   if (requestedMode === 'minimal') {
     const minWidth = Number(payload?.minWidth);
     const minHeight = Number(payload?.minHeight);
-    if (Number.isFinite(minWidth) && minWidth >= 320) {
+    if (Number.isFinite(minWidth) && minWidth >= MINIMAL_FLOOR_W) {
       ws.minimalMinWidth = Math.floor(minWidth);
     }
     if (Number.isFinite(minHeight) && minHeight >= 220) {
@@ -426,6 +463,11 @@ async function setWindowMode(payload) {
   if (requestedMode === currentMode && win && !win.isDestroyed()) {
     if (requestedMode === 'minimal') {
       win.setMinimumSize(ws.minimalMinWidth, ws.minimalMinHeight);
+      win.setAlwaysOnTop(true, 'floating');
+      win.setMenuBarVisibility(false);
+    } else {
+      win.setAlwaysOnTop(false);
+      win.setMenuBarVisibility(true);
     }
     return ws;
   }
@@ -452,7 +494,13 @@ function setWindowPosition(payload) {
   const y = optionalInt(payload?.y);
   if (x === null || y === null) throw new Error('x and y are required');
 
-  win.setPosition(x, y);
+  const width = optionalInt(payload?.width);
+  const height = optionalInt(payload?.height);
+  if (width !== null && height !== null && width >= MINIMAL_FLOOR_W && height >= MINIMAL_FLOOR_W) {
+    win.setBounds({ x, y, width, height }, false);
+  } else {
+    win.setPosition(x, y);
+  }
   return { ok: true };
 }
 

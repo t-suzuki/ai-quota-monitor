@@ -2,6 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { fetchClaudeUsageRaw, fetchCodexUsageRaw, safeJsonParse } = require('./src/core/usage-clients');
+const { version: APP_VERSION } = require('./package.json');
 
 const PORT = Number(process.env.PORT || 4173);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -133,6 +134,10 @@ async function serveStatic(req, res, urlPath) {
 
 const server = http.createServer(async (req, res) => {
   const url = req.url || '/';
+  if (url.startsWith('/api/version')) {
+    writeJson(res, req, 200, { version: APP_VERSION });
+    return;
+  }
   if (url.startsWith('/api/claude')) {
     await handleClaude(req, res);
     return;

@@ -14,10 +14,16 @@ const state = {
   logs: [],
   rawResponses: {},
   history: {},    // { 'serviceKey:windowName': [util1, util2, ...] }
+  notifySettings: { critical: true, recovery: true, warning: false, thresholdWarning: 75, thresholdCritical: 90 },
 };
 
-const THRESHOLDS = { warning: 75, critical: 90, exhausted: 100 };
+const THRESHOLDS_EXHAUSTED = 100;
 const IS_ELECTRON = Boolean(window.quotaApi && window.quotaApi.platform === 'electron');
+// Minimal-mode sizing — single source of truth: card width (must match CSS --minimal-card-width)
+const MINIMAL_CARD_WIDTH = 290;
+const MINIMAL_PAD = 16;                                    // .container padding in minimal mode (8px × 2)
+const MINIMAL_FLOOR_W = MINIMAL_CARD_WIDTH - 40;           // validation floor for clamp / drag
+const SAVED_TOKEN_MASK = '********************';
 const SESSION_KEYS = {
   accounts: 'qm-accounts',
   interval: 'qm-interval',
@@ -28,6 +34,7 @@ const SESSION_KEYS = {
   pollState: 'qm-poll-state',
   legacyClaude: 'qm-claude',
   legacyCodex: 'qm-codex',
+  notifySettings: 'qm-notify-settings',
 };
 const SERVICE_META = {
   claude: {
@@ -66,9 +73,9 @@ const log = (msg, level = '') => {
 };
 
 function classifyUtilization(pct) {
-  if (pct >= THRESHOLDS.exhausted) return 'exhausted';
-  if (pct >= THRESHOLDS.critical) return 'critical';
-  if (pct >= THRESHOLDS.warning) return 'warning';
+  if (pct >= THRESHOLDS_EXHAUSTED) return 'exhausted';
+  if (pct >= state.notifySettings.thresholdCritical) return 'critical';
+  if (pct >= state.notifySettings.thresholdWarning) return 'warning';
   return 'ok';
 }
 
@@ -94,6 +101,30 @@ function notify(title, body) {
   }
 }
 
+function checkStatusTransition(prev, next, label, windows) {
+  if (!prev || prev === next) return;
+  const ns = state.notifySettings;
+  if ((next === 'critical' || next === 'exhausted') && ns.critical) {
+    const detail = windows.map(w => `${w.name}: ${w.utilization}%`).join(', ');
+    notify(`${label} ⚠️`, `ステータス: ${next} — ${detail}`);
+  }
+  if (next === 'warning' && prev !== 'critical' && prev !== 'exhausted' && ns.warning) {
+    const detail = windows.map(w => `${w.name}: ${w.utilization}%`).join(', ');
+    notify(`${label} ⚠`, `ステータス: ${next} — ${detail}`);
+  }
+  if (next === 'ok' && (prev === 'critical' || prev === 'exhausted') && ns.recovery) {
+    notify(`${label} ✅`, 'クォータが回復しました');
+  }
+  // Logging (always, regardless of notification settings)
+  if (next === 'critical' || next === 'exhausted') {
+    log(`${label} → ${next}`, 'crit');
+  } else if (next === 'warning' && prev !== 'critical' && prev !== 'exhausted') {
+    log(`${label} → ${next}`, 'warn');
+  } else if (next === 'ok' && (prev === 'critical' || prev === 'exhausted')) {
+    log(`${label} → ok (回復)`, 'ok');
+  }
+}
+
 function makeAccountId(service) {
   return `${service}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -106,7 +137,9 @@ function defaultAccount(service, idx = 0) {
 function accountFromRow(row) {
   const id = row.dataset.accountId || '';
   const name = row.querySelector('.account-name')?.value?.trim() || '';
-  const token = row.querySelector('.account-token')?.value?.trim() || '';
+  const rawToken = row.querySelector('.account-token')?.value?.trim() || '';
+  const maskedToken = row.dataset.tokenMasked === '1' && rawToken === SAVED_TOKEN_MASK;
+  const token = maskedToken ? '' : rawToken;
   const hasToken = row.dataset.hasToken === '1';
   return { id, name, token, hasToken };
 }
@@ -125,12 +158,13 @@ function writeAccountsToDom(service, accounts) {
     row.className = 'account-row';
     row.dataset.accountId = acc.id || makeAccountId(service);
     row.dataset.hasToken = acc.hasToken ? '1' : '0';
-    const tokenPlaceholder = IS_ELECTRON && acc.hasToken
-      ? '保存済み (入力すると更新)'
-      : 'eyJhbG... / sk-...';
+    const tokenMasked = Boolean(IS_ELECTRON && acc.hasToken && !acc.token);
+    row.dataset.tokenMasked = tokenMasked ? '1' : '0';
+    const tokenValue = tokenMasked ? SAVED_TOKEN_MASK : (acc.token || '');
+    const tokenPlaceholder = 'eyJhbG... / sk-...';
     row.innerHTML = `
       <input class="account-name" type="text" placeholder="表示名" value="${escHtml(acc.name || '')}">
-      <input class="account-token" type="text" placeholder="${escHtml(tokenPlaceholder)}" value="${escHtml(acc.token || '')}">
+      <input class="account-token" type="text" placeholder="${escHtml(tokenPlaceholder)}" value="${escHtml(tokenValue)}">
       <button class="btn-mini btn-remove-account" type="button">削除</button>
     `;
     row.querySelector('.btn-remove-account').addEventListener('click', async () => {
@@ -147,8 +181,15 @@ function writeAccountsToDom(service, accounts) {
       queuePersistSetup();
     });
     row.querySelector('.account-name').addEventListener('input', queuePersistSetup);
-    row.querySelector('.account-token').addEventListener('input', () => {
-      row.dataset.hasToken = row.querySelector('.account-token')?.value?.trim() ? '0' : row.dataset.hasToken;
+    const tokenInput = row.querySelector('.account-token');
+    tokenInput.addEventListener('focus', () => {
+      if (row.dataset.tokenMasked === '1' && tokenInput.value === SAVED_TOKEN_MASK) {
+        setTimeout(() => tokenInput.select(), 0);
+      }
+    });
+    tokenInput.addEventListener('input', () => {
+      row.dataset.tokenMasked = '0';
+      row.dataset.hasToken = tokenInput.value?.trim() ? '0' : row.dataset.hasToken;
       queuePersistSetup();
     });
     list.appendChild(row);
@@ -192,7 +233,32 @@ function upsertDomTokenState(service, id, hasToken) {
   row.dataset.hasToken = hasToken ? '1' : '0';
   const tokenInput = row.querySelector('.account-token');
   if (tokenInput) {
-    tokenInput.placeholder = hasToken ? '保存済み (入力すると更新)' : 'eyJhbG... / sk-...';
+    tokenInput.placeholder = 'eyJhbG... / sk-...';
+    if (hasToken) {
+      tokenInput.value = SAVED_TOKEN_MASK;
+      row.dataset.tokenMasked = '1';
+    } else if (!hasToken) {
+      tokenInput.value = '';
+      row.dataset.tokenMasked = '0';
+    }
+  }
+}
+
+async function resolveAppVersion() {
+  if (IS_ELECTRON) {
+    try {
+      return await window.quotaApi.getVersion();
+    } catch {
+      return '';
+    }
+  }
+  try {
+    const resp = await fetch('/api/version', { cache: 'no-store' });
+    if (!resp.ok) return '';
+    const data = await resp.json();
+    return typeof data?.version === 'string' ? data.version : '';
+  } catch {
+    return '';
   }
 }
 
@@ -203,6 +269,8 @@ const minimalDragState = {
   active: false,
   offsetX: 0,
   offsetY: 0,
+  width: 0,
+  height: 0,
 };
 async function persistSetup() {
   try {
@@ -481,8 +549,6 @@ async function pollAll() {
   const worstOf = (windows) => windows.reduce((a, w) => (
     statusOrder.indexOf(w.status) > statusOrder.indexOf(a) ? w.status : a
   ), 'ok');
-  const hasUsableToken = (acc) => IS_ELECTRON ? (acc.hasToken || Boolean(acc.token)) : Boolean(acc.token);
-
   for (const acc of state.accounts.claude) {
     if (!hasUsableToken(acc)) continue;
     const serviceKey = `claude:${acc.id}`;
@@ -511,16 +577,7 @@ async function pollAll() {
 
       const prev = state.services[serviceKey]?.status;
       nextServices[serviceKey] = { label, windows, status: worstStatus };
-
-      if (prev && prev !== worstStatus) {
-        if (worstStatus === 'critical' || worstStatus === 'exhausted') {
-          notify(`${label} ⚠️`, `ステータス: ${worstStatus} — ${windows.map(w => `${w.name}: ${w.utilization}%`).join(', ')}`);
-          log(`${label} → ${worstStatus}`, 'crit');
-        } else if (worstStatus === 'ok' && (prev === 'critical' || prev === 'exhausted')) {
-          notify(`${label} ✅`, 'クォータが回復しました');
-          log(`${label} → ok (回復)`, 'ok');
-        }
-      }
+      checkStatusTransition(prev, worstStatus, label, windows);
       anySuccess = true;
       log(`${label} 取得成功: ${windows.map(w => `${w.name}=${w.utilization}%`).join(', ')}`);
       if (IS_ELECTRON) upsertDomTokenState('claude', acc.id, true);
@@ -558,16 +615,7 @@ async function pollAll() {
 
       const prev = state.services[serviceKey]?.status;
       nextServices[serviceKey] = { label, windows, status: worstStatus };
-
-      if (prev && prev !== worstStatus) {
-        if (worstStatus === 'critical' || worstStatus === 'exhausted') {
-          notify(`${label} ⚠️`, `ステータス: ${worstStatus}`);
-          log(`${label} → ${worstStatus}`, 'crit');
-        } else if (worstStatus === 'ok' && (prev === 'critical' || prev === 'exhausted')) {
-          notify(`${label} ✅`, 'クォータが回復しました');
-          log(`${label} → ok (回復)`, 'ok');
-        }
-      }
+      checkStatusTransition(prev, worstStatus, label, windows);
       anySuccess = true;
       log(`${label} 取得成功: ${windows.map(w => `${w.name}=${w.utilization}%`).join(', ')}`);
       if (IS_ELECTRON) upsertDomTokenState('codex', acc.id, true);
@@ -676,7 +724,7 @@ function render() {
     const logoHtml = meta?.icon ? `<span class="card-logo">${meta.icon}</span>` : '';
 
     if (svc.error && svc.windows.length === 0) {
-      return `<div class="card">
+      return `<div class="card card-${svc.status}">
         <div class="card-header">
           <span class="card-header-left">${logoHtml}<span class="card-label">${svc.label}</span></span>
           <span class="card-status error">エラー</span>
@@ -709,7 +757,7 @@ function render() {
       </div>`;
     }).join('');
 
-    return `<div class="card">
+    return `<div class="card card-${svc.status}">
       <div class="card-header">
         <span class="card-header-left">${logoHtml}<span class="card-label">${svc.label}</span></span>
         <span class="card-status ${svc.status}">${svc.status}</span>
@@ -742,25 +790,36 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function targetElement(target) {
+  if (target instanceof Element) return target;
+  return target && target.parentElement instanceof Element ? target.parentElement : null;
+}
+
 function applyMinimalModeUI(isMinimal) {
   document.body.classList.toggle('minimal-mode', Boolean(isMinimal));
 }
 
 function isInteractiveUiTarget(target) {
-  if (!(target instanceof Element)) return false;
-  return Boolean(target.closest('button,input,textarea,select,summary,details,label,a,pre,.cmd-copy,.cmd-code'));
+  const el = targetElement(target);
+  if (!el) return false;
+  return Boolean(el.closest('button,input,textarea,select,summary,details,label,a,pre,.cmd-copy,.cmd-code'));
 }
 
 function computeMinimalWindowMetrics() {
   const container = document.querySelector('.container');
   const dashboard = $('#dashboard');
   const cards = Array.from(dashboard?.querySelectorAll('.card') || []);
-  const fallbackCardWidth = 420;
   const fallbackCardHeight = 240;
 
+  const rootStyle = getComputedStyle(document.documentElement);
+  const configuredCardWidthRaw = parseFloat(rootStyle.getPropertyValue('--minimal-card-width'));
+  const configuredCardWidth = Number.isFinite(configuredCardWidthRaw) && configuredCardWidthRaw > 0
+    ? configuredCardWidthRaw
+    : MINIMAL_CARD_WIDTH;
   const cardWidths = cards.map((card) => card.getBoundingClientRect().width).filter((v) => v > 0);
   const cardHeights = cards.map((card) => card.getBoundingClientRect().height).filter((v) => v > 0);
-  const cardWidth = cardWidths.length > 0 ? Math.ceil(Math.max(...cardWidths)) : fallbackCardWidth;
+  const measuredCardWidth = cardWidths.length > 0 ? Math.ceil(Math.max(...cardWidths)) : configuredCardWidth;
+  const cardWidth = clamp(measuredCardWidth, MINIMAL_FLOOR_W, Math.ceil(configuredCardWidth));
   const firstCardHeight = cardHeights.length > 0 ? Math.ceil(cardHeights[0]) : fallbackCardHeight;
   const totalCardsHeight = cardHeights.length > 0
     ? Math.ceil(cardHeights.reduce((sum, h) => sum + h, 0))
@@ -778,7 +837,7 @@ function computeMinimalWindowMetrics() {
     ? (parseFloat(dashboardStyle.rowGap) || parseFloat(dashboardStyle.gap) || 0)
     : 0;
 
-  const minWidth = clamp(Math.ceil(cardWidth + paddingX), 360, 2000);
+  const minWidth = clamp(Math.ceil(cardWidth + paddingX), MINIMAL_FLOOR_W, 2000);
   const minHeight = clamp(Math.ceil(firstCardHeight + paddingY), 220, 2000);
   const preferredHeight = clamp(
     Math.ceil(totalCardsHeight + (rowGap * Math.max(cards.length - 1, 0)) + paddingY),
@@ -790,14 +849,9 @@ function computeMinimalWindowMetrics() {
 }
 
 function isMinimalToggleTarget(target) {
-  if (!(target instanceof Element)) return false;
-  if (!target.closest('.container')) return false;
-  if (isInteractiveUiTarget(target)) {
-    return false;
-  }
-  if (state.windowMode === 'minimal') return true;
-  if (target.closest('h1,.subtitle,.card,.window,.controls,.setup,.raw,.log-section')) return false;
-  return true;
+  const el = targetElement(target);
+  if (!el) return false;
+  return !isInteractiveUiTarget(target);
 }
 
 async function toggleWindowModeByGesture() {
@@ -828,10 +882,20 @@ async function toggleWindowModeByGesture() {
 }
 
 function isMinimalDragTarget(target) {
-  if (!(target instanceof Element)) return false;
-  if (!target.closest('.container')) return false;
+  const el = targetElement(target);
+  if (!el) return false;
   if (isInteractiveUiTarget(target)) return false;
   return true;
+}
+
+function isNearWindowEdge(event) {
+  const edge = 8;
+  return (
+    event.clientX <= edge ||
+    event.clientY <= edge ||
+    event.clientX >= window.innerWidth - edge ||
+    event.clientY >= window.innerHeight - edge
+  );
 }
 
 function setupMinimalWindowDragHandlers() {
@@ -845,16 +909,24 @@ function setupMinimalWindowDragHandlers() {
     if (state.windowMode !== 'minimal') return;
     if (event.button !== 0) return;
     if (!isMinimalDragTarget(event.target)) return;
+    if (isNearWindowEdge(event)) return;
     minimalDragState.active = true;
     minimalDragState.offsetX = event.screenX - window.screenX;
     minimalDragState.offsetY = event.screenY - window.screenY;
+    minimalDragState.width = Math.max(MINIMAL_FLOOR_W, Math.round(window.outerWidth));
+    minimalDragState.height = Math.max(MINIMAL_FLOOR_W, Math.round(window.outerHeight));
   });
 
   document.addEventListener('mousemove', (event) => {
     if (!minimalDragState.active) return;
     const x = Math.round(event.screenX - minimalDragState.offsetX);
     const y = Math.round(event.screenY - minimalDragState.offsetY);
-    window.quotaApi.setWindowPosition({ x, y })
+    window.quotaApi.setWindowPosition({
+      x,
+      y,
+      width: minimalDragState.width,
+      height: minimalDragState.height,
+    })
       .then(() => {
         didLogWindowMoveError = false;
       })
@@ -924,10 +996,28 @@ function updateCountdown() {
   updatePollStatus(`次回更新: ${remaining}秒後`);
 }
 
+function hasUsableToken(acc) {
+  return IS_ELECTRON ? (acc.hasToken || Boolean(acc.token)) : Boolean(acc.token);
+}
+
 function hasAnyUsableToken(accounts) {
   const all = [...(accounts?.claude || []), ...(accounts?.codex || [])];
-  if (IS_ELECTRON) return all.some((a) => a.hasToken || a.token);
-  return all.some((a) => a.token);
+  return all.some(hasUsableToken);
+}
+
+function ensureServicePlaceholders() {
+  for (const service of Object.keys(SERVICE_META)) {
+    for (const acc of (state.accounts[service] || [])) {
+      if (!hasUsableToken(acc)) continue;
+      const serviceKey = `${service}:${acc.id}`;
+      if (state.services[serviceKey]) continue;
+      state.services[serviceKey] = {
+        label: `${SERVICE_META[service].label}: ${acc.name}`,
+        windows: [],
+        status: 'unknown',
+      };
+    }
+  }
 }
 
 function ensureSetupOpenIfMissingToken(accounts) {
@@ -940,6 +1030,11 @@ function ensureSetupOpenIfMissingToken(accounts) {
 document.addEventListener('DOMContentLoaded', async () => {
   let restored = null;
   let restoredPollState = null;
+
+  const version = await resolveAppVersion();
+  const versionEl = $('#app-version');
+  if (versionEl && version) versionEl.textContent = `v${version}`;
+
   if (IS_ELECTRON) {
     try {
       const snapshot = await window.quotaApi.listAccounts();
@@ -983,7 +1078,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (IS_ELECTRON) {
     const subtitle = document.querySelector('.subtitle');
-    if (subtitle) subtitle.textContent = 'Electron 版 — トークンは OS キーチェーンに保存されます';
+    if (subtitle) subtitle.textContent = 'トークンは OS キーチェーンに保存されます';
   }
 
   ensureSetupOpenIfMissingToken(state.accounts);
@@ -1024,7 +1119,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     pollAll().then(() => updatePollStatus('取得完了'));
   });
 
-  $('#btn-notify').addEventListener('click', async () => {
+  // Notification settings
+  try {
+    const nsRaw = sessionStorage.getItem(SESSION_KEYS.notifySettings);
+    if (nsRaw) {
+      const ns = JSON.parse(nsRaw);
+      if (typeof ns.critical === 'boolean') state.notifySettings.critical = ns.critical;
+      if (typeof ns.recovery === 'boolean') state.notifySettings.recovery = ns.recovery;
+      if (typeof ns.warning === 'boolean') state.notifySettings.warning = ns.warning;
+    }
+  } catch {}
+  $('#notify-critical').checked = state.notifySettings.critical;
+  $('#notify-recovery').checked = state.notifySettings.recovery;
+  $('#notify-warning').checked = state.notifySettings.warning;
+  const persistNotifySettings = () => {
+    state.notifySettings.critical = $('#notify-critical').checked;
+    state.notifySettings.recovery = $('#notify-recovery').checked;
+    state.notifySettings.warning = $('#notify-warning').checked;
+    try { sessionStorage.setItem(SESSION_KEYS.notifySettings, JSON.stringify(state.notifySettings)); } catch {}
+  };
+  $('#notify-critical').addEventListener('change', persistNotifySettings);
+  $('#notify-recovery').addEventListener('change', persistNotifySettings);
+  $('#notify-warning').addEventListener('change', persistNotifySettings);
+  $('#btn-notify-test').addEventListener('click', async () => {
     const perm = await Notification.requestPermission();
     if (perm === 'granted') {
       log('通知が許可されました', 'ok');
@@ -1033,6 +1150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       log('通知が拒否されました', 'warn');
     }
   });
+
   $(SERVICE_META.claude.addBtnId).addEventListener('click', () => addAccountRow('claude'));
   $(SERVICE_META.codex.addBtnId).addEventListener('click', () => addAccountRow('codex'));
   $('#poll-interval').addEventListener('change', queuePersistSetup);
@@ -1044,7 +1162,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   setupMinimalWindowDragHandlers();
 
+  ensureServicePlaceholders();
   render();
+
+  if (IS_ELECTRON && state.windowMode === 'minimal') {
+    const metrics = computeMinimalWindowMetrics();
+    window.quotaApi.setWindowMode({
+      mode: 'minimal',
+      minWidth: metrics.minWidth,
+      minHeight: metrics.minHeight,
+    }).catch((e) => {
+      log(`ミニマル制約更新エラー: ${e.message || e}`, 'warn');
+    });
+  }
 
   try {
     if (restoredPollState?.interval) {
