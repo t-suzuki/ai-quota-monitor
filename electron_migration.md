@@ -1,6 +1,6 @@
 # Electron Migration Tracker
 
-最終更新: 2026-02-13 03:02 (JST)
+最終更新: 2026-02-13 03:14 (JST)
 目的: Electron 移行の「計画・メモ・進捗・残件」を単一ファイルで管理する。
 
 ## 運用ルール
@@ -100,6 +100,9 @@
   - 保存済みトークンの表示を placeholder 文言から伏せ字ダミー値表示へ変更。
   - 伏せ字ダミー値が keychain を上書きしないよう、renderer 収集時にマスク判定して除外する処理を追加。
   - アプリバージョンを `1.0.0` に設定し、タイトル横へ動的表示を追加 (Electron: `getVersion`, Web: `/api/version`)。
+- 2026-02-13 03:14 JST
+  - NSIS インストーラを one-click から対話型へ変更し、明示操作ありのインストールフローへ切替。
+  - インストール先変更を許可し、ショートカット (デスクトップ/スタートメニュー) は既定 ON の設定を追加。
 
 ## 残件 (Open Items)
 - P7: Node/npm がある環境で `npm install` -> `npm run start:web` / `npm run start:electron` / `npm run dist:win` を実機確認。

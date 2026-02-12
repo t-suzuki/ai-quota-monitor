@@ -34,6 +34,14 @@
     ],
     "asar": true,
     "npmRebuild": false,
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
     "win": {
       "target": [
         "nsis"
