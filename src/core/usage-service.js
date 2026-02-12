@@ -1,5 +1,5 @@
 const { fetchClaudeUsageRaw, fetchCodexUsageRaw, safeJsonParse } = require('./usage-clients');
-const { parseClaudeUsage, parseCodexUsage, worstStatus } = require('./parsers');
+const { parseClaudeUsage, parseCodexUsage } = require('./parsers');
 
 function buildError(raw, parsed) {
   if (parsed && typeof parsed === 'object') {
@@ -34,7 +34,6 @@ async function fetchNormalizedUsage(service, token) {
   return {
     raw: parsed,
     windows,
-    status: worstStatus(windows),
   };
 }
 

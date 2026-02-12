@@ -1,8 +1,8 @@
 {
-  "name": "quota-monitor",
+  "name": "ai-quota-monitor",
   "version": "1.0.0",
   "private": true,
-  "description": "AI coding tool quota monitor",
+  "description": "AI quota monitor",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -20,10 +20,10 @@
     "electron": "^36.3.2",
     "electron-builder": "^26.7.0"
   },
+  "author": "Takahiro SUZUKI",
   "build": {
-    "appId": "com.tomato.quota-monitor",
+    "appId": "com.suzuki.takahiro.quota-monitor",
     "productName": "AI Quota Monitor",
-    "author": "tomato",
     "files": [
       "electron/**/*",
       "public/**/*",

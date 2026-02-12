@@ -1,12 +1,3 @@
-const THRESHOLDS = { warning: 75, critical: 90, exhausted: 100 };
-
-function classifyUtilization(pct) {
-  if (pct >= THRESHOLDS.exhausted) return 'exhausted';
-  if (pct >= THRESHOLDS.critical) return 'critical';
-  if (pct >= THRESHOLDS.warning) return 'warning';
-  return 'ok';
-}
-
 function parseClaudeUsage(data) {
   const windows = [];
   const labels = {
@@ -36,7 +27,7 @@ function parseClaudeUsage(data) {
       name: label,
       utilization: w.utilization,
       resetsAt: w.resets_at || null,
-      status: classifyUtilization(w.utilization),
+      status: null,
       windowSeconds: winSecMap[key] || (key.startsWith('seven_day') ? 604800 : key.includes('hour') ? 18000 : null),
     });
     pushed.add(key);
@@ -90,15 +81,15 @@ function parseCodexUsage(data) {
 
     const limitReached = windowData.limit_reached ?? windowData.limitReached ?? parent?.limit_reached ?? parent?.limitReached;
     const allowed = windowData.allowed ?? parent?.allowed;
-    let status = classifyUtilization(utilization);
-    if (limitReached === true || allowed === false) status = 'exhausted';
+    const forceExhausted = limitReached === true || allowed === false;
     const windowSeconds = toNumber(windowData.limit_window_seconds ?? windowData.limitWindowSeconds) || null;
 
     windows.push({
       name: normalizeWindowName(windowSeconds, label),
       utilization,
       resetsAt: windowData.reset_at ?? windowData.resetAt ?? windowData.resets_at ?? windowData.resetsAt ?? null,
-      status,
+      status: null,
+      forceExhausted,
       windowSeconds,
     });
   };
@@ -159,17 +150,7 @@ function parseCodexUsage(data) {
   return windows;
 }
 
-function worstStatus(windows) {
-  const statusOrder = ['unknown', 'ok', 'warning', 'critical', 'exhausted'];
-  return (windows || []).reduce((acc, w) => {
-    return statusOrder.indexOf(w.status) > statusOrder.indexOf(acc) ? w.status : acc;
-  }, 'ok');
-}
-
 module.exports = {
-  THRESHOLDS,
-  classifyUtilization,
   parseClaudeUsage,
   parseCodexUsage,
-  worstStatus,
 };

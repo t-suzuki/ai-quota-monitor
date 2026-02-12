@@ -79,6 +79,25 @@ function classifyUtilization(pct) {
   return 'ok';
 }
 
+function classifyWindows(windows) {
+  for (const w of windows) {
+    if (w.forceExhausted) { w.status = 'exhausted'; continue; }
+    w.status = classifyUtilization(w.utilization);
+  }
+}
+
+function reclassifyAllServices() {
+  const statusOrder = ['unknown', 'ok', 'warning', 'critical', 'exhausted'];
+  for (const svc of Object.values(state.services)) {
+    if (!svc.windows || svc.windows.length === 0) continue;
+    const prev = svc.status;
+    classifyWindows(svc.windows);
+    svc.status = svc.windows.reduce((a, w) =>
+      statusOrder.indexOf(w.status) > statusOrder.indexOf(a) ? w.status : a, 'ok');
+    checkStatusTransition(prev, svc.status, svc.label, svc.windows);
+  }
+}
+
 function formatReset(epoch) {
   if (!epoch) return '';
   const d = typeof epoch === 'number' ? new Date(epoch * 1000) : new Date(epoch);
@@ -397,7 +416,7 @@ function parseClaude(data) {
       name,
       utilization: w.utilization,
       resetsAt: w.resets_at || null,
-      status: classifyUtilization(w.utilization),
+      status: null,
       windowSeconds: winSecMap[key] || (key.startsWith('seven_day') ? 604800 : key.includes('hour') ? 18000 : null),
     });
     pushed.add(key);
@@ -468,14 +487,14 @@ function parseCodex(data) {
       })();
     const limitReached = windowData.limit_reached ?? windowData.limitReached ?? parent?.limit_reached ?? parent?.limitReached;
     const allowed = windowData.allowed ?? parent?.allowed;
-    let status = classifyUtilization(utilization);
-    if (limitReached === true || allowed === false) status = 'exhausted';
+    const forceExhausted = limitReached === true || allowed === false;
     const ws = toNumber(windowData.limit_window_seconds ?? windowData.limitWindowSeconds) || null;
     windows.push({
       name: normalizeWindowName(ws, label),
       utilization,
       resetsAt: windowData.reset_at ?? windowData.resetAt ?? windowData.resets_at ?? windowData.resetsAt ?? null,
-      status,
+      status: null,
+      forceExhausted,
       windowSeconds: ws,
     });
   };
@@ -566,10 +585,12 @@ async function pollAll() {
         });
         data = result.raw;
         windows = result.windows;
-        worstStatus = result.status || worstOf(windows);
+        classifyWindows(windows);
+        worstStatus = worstOf(windows);
       } else {
         data = await fetchClaude(acc.token);
         windows = parseClaude(data);
+        classifyWindows(windows);
         worstStatus = worstOf(windows);
       }
       state.rawResponses[serviceKey] = data;
@@ -604,10 +625,12 @@ async function pollAll() {
         });
         data = result.raw;
         windows = result.windows;
-        worstStatus = result.status || worstOf(windows);
+        classifyWindows(windows);
+        worstStatus = worstOf(windows);
       } else {
         data = await fetchCodex(acc.token);
         windows = parseCodex(data);
+        classifyWindows(windows);
         worstStatus = worstOf(windows);
       }
       state.rawResponses[serviceKey] = data;
@@ -1042,6 +1065,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.accounts.codex = Array.isArray(snapshot?.codex) ? snapshot.codex.map((x) => ({ ...x, token: '' })) : [];
       const settings = await window.quotaApi.getSettings();
       if (settings?.pollInterval) $('#poll-interval').value = String(settings.pollInterval);
+      if (settings?.notifySettings) {
+        const ns = settings.notifySettings;
+        if (typeof ns.critical === 'boolean') state.notifySettings.critical = ns.critical;
+        if (typeof ns.recovery === 'boolean') state.notifySettings.recovery = ns.recovery;
+        if (typeof ns.warning === 'boolean') state.notifySettings.warning = ns.warning;
+        if (typeof ns.thresholdWarning === 'number') state.notifySettings.thresholdWarning = ns.thresholdWarning;
+        if (typeof ns.thresholdCritical === 'number') state.notifySettings.thresholdCritical = ns.thresholdCritical;
+      }
       restoredPollState = await window.quotaApi.getPollingState();
       const windowState = await window.quotaApi.getWindowState();
       state.windowMode = windowState?.mode === 'minimal' ? 'minimal' : 'normal';
@@ -1092,6 +1123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.rawResponses = raw ? JSON.parse(raw) : {};
       const histRaw = sessionStorage.getItem(SESSION_KEYS.history);
       if (histRaw) state.history = JSON.parse(histRaw);
+      reclassifyAllServices();
       render();
       if (fetchedAt) log(`前回取得: ${new Date(fetchedAt).toLocaleString()}`);
     }
@@ -1119,28 +1151,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     pollAll().then(() => updatePollStatus('取得完了'));
   });
 
-  // Notification settings
-  try {
-    const nsRaw = sessionStorage.getItem(SESSION_KEYS.notifySettings);
-    if (nsRaw) {
-      const ns = JSON.parse(nsRaw);
-      if (typeof ns.critical === 'boolean') state.notifySettings.critical = ns.critical;
-      if (typeof ns.recovery === 'boolean') state.notifySettings.recovery = ns.recovery;
-      if (typeof ns.warning === 'boolean') state.notifySettings.warning = ns.warning;
-    }
-  } catch {}
+  // Notification settings — restore from sessionStorage (non-Electron fallback)
+  if (!IS_ELECTRON) {
+    try {
+      const nsRaw = sessionStorage.getItem(SESSION_KEYS.notifySettings);
+      if (nsRaw) {
+        const ns = JSON.parse(nsRaw);
+        if (typeof ns.critical === 'boolean') state.notifySettings.critical = ns.critical;
+        if (typeof ns.recovery === 'boolean') state.notifySettings.recovery = ns.recovery;
+        if (typeof ns.warning === 'boolean') state.notifySettings.warning = ns.warning;
+        if (typeof ns.thresholdWarning === 'number') state.notifySettings.thresholdWarning = ns.thresholdWarning;
+        if (typeof ns.thresholdCritical === 'number') state.notifySettings.thresholdCritical = ns.thresholdCritical;
+      }
+    } catch {}
+  }
   $('#notify-critical').checked = state.notifySettings.critical;
   $('#notify-recovery').checked = state.notifySettings.recovery;
   $('#notify-warning').checked = state.notifySettings.warning;
+  $('#threshold-warning').value = String(state.notifySettings.thresholdWarning);
+  $('#threshold-critical').value = String(state.notifySettings.thresholdCritical);
   const persistNotifySettings = () => {
     state.notifySettings.critical = $('#notify-critical').checked;
     state.notifySettings.recovery = $('#notify-recovery').checked;
     state.notifySettings.warning = $('#notify-warning').checked;
-    try { sessionStorage.setItem(SESSION_KEYS.notifySettings, JSON.stringify(state.notifySettings)); } catch {}
+    state.notifySettings.thresholdWarning = Math.max(1, Math.min(99, parseInt($('#threshold-warning').value, 10) || 75));
+    state.notifySettings.thresholdCritical = Math.max(1, Math.min(99, parseInt($('#threshold-critical').value, 10) || 90));
+    if (IS_ELECTRON) {
+      window.quotaApi.setSettings({ notifySettings: state.notifySettings }).catch(() => {});
+    } else {
+      try { sessionStorage.setItem(SESSION_KEYS.notifySettings, JSON.stringify(state.notifySettings)); } catch {}
+    }
+    reclassifyAllServices();
+    render();
   };
   $('#notify-critical').addEventListener('change', persistNotifySettings);
   $('#notify-recovery').addEventListener('change', persistNotifySettings);
   $('#notify-warning').addEventListener('change', persistNotifySettings);
+  $('#threshold-warning').addEventListener('change', persistNotifySettings);
+  $('#threshold-critical').addEventListener('change', persistNotifySettings);
   $('#btn-notify-test').addEventListener('click', async () => {
     const perm = await Notification.requestPermission();
     if (perm === 'granted') {
