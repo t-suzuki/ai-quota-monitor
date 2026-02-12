@@ -4,6 +4,7 @@ const path = require('node:path');
 
 const PORT = Number(process.env.PORT || 4173);
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const ANTHROPIC_OAUTH_BETA = 'oauth-2025-04-20';
 
 function corsHeaders(req) {
   return {
@@ -39,6 +40,7 @@ async function handleClaude(req, res) {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
+        'anthropic-beta': ANTHROPIC_OAUTH_BETA,
       },
     });
     const body = await upstream.text();

@@ -1,4 +1,5 @@
 export const config = { runtime: 'edge' };
+const ANTHROPIC_OAUTH_BETA = 'oauth-2025-04-20';
 
 export default async function handler(req) {
   if (req.method === 'OPTIONS') {
@@ -18,6 +19,7 @@ export default async function handler(req) {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json',
+        'anthropic-beta': ANTHROPIC_OAUTH_BETA,
       },
     });
 

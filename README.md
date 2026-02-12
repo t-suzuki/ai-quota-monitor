@@ -67,24 +67,26 @@ security find-generic-password -s "Claude Code-credentials" -w \
 
 **Linux:**
 ```bash
-cat ~/.config/claude/credentials.json | jq -r '.claudeAiOauth.accessToken'
-# または
-cat ~/.claude/credentials.json | jq -r '.claudeAiOauth.accessToken'
+cat ~/.claude/.credentials.json | jq -r '.claudeAiOauth.accessToken'
+# 旧形式の環境では ~/.config/claude/credentials.json の場合あり
 ```
 
 **Windows (PowerShell):**
 ```powershell
-(Get-Content "$env:USERPROFILE\.claude\credentials.json" -Raw | ConvertFrom-Json).claudeAiOauth.accessToken
+(Get-Content "$env:USERPROFILE\.claude\.credentials.json" -Raw | ConvertFrom-Json).claudeAiOauth.accessToken
 ```
 
-**API エンドポイント:** `GET https://api.anthropic.com/api/oauth/usage`
+**API エンドポイント:** `GET https://api.anthropic.com/api/oauth/usage`  
+`anthropic-beta: oauth-2025-04-20` ヘッダーが必須
 
 レスポンス例:
 ```json
 {
   "five_hour": { "utilization": 12.5, "resets_at": "2025-11-04T04:59:59Z" },
   "seven_day": { "utilization": 35.0, "resets_at": "2025-11-06T03:59:59Z" },
-  "seven_day_opus": { "utilization": 0.0, "resets_at": null }
+  "seven_day_opus": { "utilization": 0.0, "resets_at": null },
+  "seven_day_sonnet": { "utilization": 0.0, "resets_at": null },
+  "extra_usage": { "is_enabled": false, "utilization": null }
 }
 ```
 
@@ -168,9 +170,12 @@ RateLimitSnapshot {
 
 ## トラブルシュート
 
+- `Claude` が `401` で `OAuth authentication is currently not supported.` を返す場合:
+  - `anthropic-beta: oauth-2025-04-20` ヘッダーが不足している可能性があります。
+  - このリポジトリの `api/claude.js` / `dev-server.js` は対応済みです。
 - `Codex` が `403` で HTML (`Unable to load site`) を返す場合:
   - `chatgpt.com` 側でデプロイ先IP (例: Vercel egress) が WAF/Cloudflare によりブロックされている可能性があります。
-  - トークン不正とは限りません。ローカル実行 (`npx vercel dev`) では通る場合があります。
+  - トークン不正とは限りません。ローカル実行 (`npm run dev`) では通る場合があります。
 
 ## ファイル構成
 

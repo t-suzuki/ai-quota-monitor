@@ -30,8 +30,19 @@ h1 span { color: var(--ok); }
   border-radius: 4px; font-family: var(--font); font-size: 0.8rem; outline: none; }
 .field input:focus { border-color: var(--blue); }
 .field input::placeholder { color: var(--fg3); }
-.help { font-size: 0.7rem; color: var(--fg3); margin-top: 4px; line-height: 1.6; }
-.help code { background: var(--bg3); padding: 1px 5px; border-radius: 3px; font-size: 0.68rem; }
+.help { font-size: 0.7rem; color: var(--fg3); margin-top: 8px; line-height: 1.6; }
+.help-title { font-size: 0.72rem; color: var(--fg2); margin-bottom: 6px; }
+.cmd-list { display: flex; flex-direction: column; gap: 6px; }
+.cmd-item { display: flex; align-items: stretch; background: var(--bg); border: 1px solid var(--bg3); border-radius: 4px; overflow: hidden; }
+.cmd-os { flex-shrink: 0; width: 70px; display: flex; align-items: center; justify-content: center;
+  background: var(--bg3); font-size: 0.65rem; color: var(--fg2); font-weight: 600; text-align: center; padding: 6px 4px; }
+.cmd-code { flex: 1; padding: 8px 10px; font-size: 0.67rem; color: var(--fg);
+  font-family: var(--font); line-height: 1.4; background: transparent; border: none; outline: none; min-width: 0; }
+.cmd-copy { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 40px;
+  background: transparent; border: none; border-left: 1px solid var(--bg3); color: var(--fg3);
+  cursor: pointer; font-size: 0.75rem; transition: background .15s, color .15s; }
+.cmd-copy:hover { background: var(--bg3); color: var(--fg); }
+.cmd-copy.copied { color: var(--ok); }
 .account-group { margin-bottom: 14px; }
 .account-list { display: flex; flex-direction: column; gap: 8px; }
 .account-row { display: grid; grid-template-columns: 160px 1fr auto; gap: 8px; }
@@ -112,10 +123,24 @@ h1 span { color: var(--ok); }
       <div class="account-list" id="claude-accounts"></div>
       <button class="btn-mini btn-add" id="btn-add-claude" type="button">+ Claude を追加</button>
       <div class="help">
-        <strong>取得方法:</strong><br>
-        macOS: <code>security find-generic-password -s "Claude Code-credentials" -w | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['claudeAiOauth']['accessToken'])"</code><br>
-        Linux: <code>cat ~/.config/claude/credentials.json | jq -r '.claudeAiOauth.accessToken'</code><br>
-        Windows (PowerShell): <code>(Get-Content "$env:USERPROFILE\.claude\credentials.json" -Raw | ConvertFrom-Json).claudeAiOauth.accessToken</code>
+        <div class="help-title">取得方法:</div>
+        <div class="cmd-list">
+          <div class="cmd-item">
+            <span class="cmd-os">macOS</span>
+            <input class="cmd-code" type="text" readonly value="security find-generic-password -s &quot;Claude Code-credentials&quot; -w | python3 -c &quot;import sys,json; print(json.loads(sys.stdin.read())['claudeAiOauth']['accessToken'])&quot;">
+            <button class="cmd-copy" type="button" title="コピー">⧉</button>
+          </div>
+          <div class="cmd-item">
+            <span class="cmd-os">Linux</span>
+            <input class="cmd-code" type="text" readonly value="cat ~/.claude/.credentials.json | jq -r '.claudeAiOauth.accessToken'">
+            <button class="cmd-copy" type="button" title="コピー">⧉</button>
+          </div>
+          <div class="cmd-item">
+            <span class="cmd-os">Windows</span>
+            <input class="cmd-code" type="text" readonly value="(Get-Content &quot;$env:USERPROFILE\.claude\.credentials.json&quot; -Raw | ConvertFrom-Json).claudeAiOauth.accessToken">
+            <button class="cmd-copy" type="button" title="コピー">⧉</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -124,10 +149,24 @@ h1 span { color: var(--ok); }
       <div class="account-list" id="codex-accounts"></div>
       <button class="btn-mini btn-add" id="btn-add-codex" type="button">+ Codex を追加</button>
       <div class="help">
-        <strong>取得方法:</strong><br>
-        Linux/macOS: <code>cat ~/.codex/auth.json | jq -r '.tokens.access_token'</code><br>
-        macOS (Keychain): <code>security find-generic-password -s "Codex Auth" -w | jq -r '.tokens.access_token'</code><br>
-        Windows (PowerShell): <code>(Get-Content "$env:USERPROFILE\.codex\auth.json" -Raw | ConvertFrom-Json).tokens.access_token</code>
+        <div class="help-title">取得方法:</div>
+        <div class="cmd-list">
+          <div class="cmd-item">
+            <span class="cmd-os">Linux<br>macOS</span>
+            <input class="cmd-code" type="text" readonly value="cat ~/.codex/auth.json | jq -r '.tokens.access_token'">
+            <button class="cmd-copy" type="button" title="コピー">⧉</button>
+          </div>
+          <div class="cmd-item">
+            <span class="cmd-os">macOS<br>(Keychain)</span>
+            <input class="cmd-code" type="text" readonly value="security find-generic-password -s &quot;Codex Auth&quot; -w | jq -r '.tokens.access_token'">
+            <button class="cmd-copy" type="button" title="コピー">⧉</button>
+          </div>
+          <div class="cmd-item">
+            <span class="cmd-os">Windows</span>
+            <input class="cmd-code" type="text" readonly value="(Get-Content &quot;$env:USERPROFILE\.codex\auth.json&quot; -Raw | ConvertFrom-Json).tokens.access_token">
+            <button class="cmd-copy" type="button" title="コピー">⧉</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -182,6 +221,20 @@ const SERVICE_META = {
   claude: { label: 'Claude Code', listId: '#claude-accounts', addBtnId: '#btn-add-claude' },
   codex: { label: 'Codex', listId: '#codex-accounts', addBtnId: '#btn-add-codex' },
 };
+
+// ═══════════════════════════════════════
+// Copy-to-clipboard for command snippets
+// ═══════════════════════════════════════
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.cmd-copy');
+  if (!btn) return;
+  const code = btn.parentElement.querySelector('.cmd-code').value;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = '✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '⧉'; btn.classList.remove('copied'); }, 1500);
+  });
+});
 
 // ═══════════════════════════════════════
 // Utils
@@ -296,6 +349,14 @@ function persistSetup() {
   } catch {}
 }
 
+function persistLastData() {
+  try {
+    sessionStorage.setItem('qm-services', JSON.stringify(state.services));
+    sessionStorage.setItem('qm-raw', JSON.stringify(state.rawResponses));
+    sessionStorage.setItem('qm-fetched-at', new Date().toISOString());
+  } catch {}
+}
+
 // ═══════════════════════════════════════
 // API proxy base URL detection
 // ═══════════════════════════════════════
@@ -317,23 +378,39 @@ async function fetchClaude(token) {
 }
 
 function parseClaude(data) {
-  // Expected: { five_hour: { utilization, resets_at }, seven_day: {...}, seven_day_opus: {...} }
   const windows = [];
-  const windowDefs = [
-    { key: 'five_hour', name: '5時間' },
-    { key: 'seven_day', name: '7日間' },
-    { key: 'seven_day_opus', name: '7日間 (Opus)' },
-  ];
-  for (const { key, name } of windowDefs) {
+  const labels = {
+    five_hour: '5時間',
+    seven_day: '7日間',
+    seven_day_opus: '7日間 (Opus)',
+    seven_day_sonnet: '7日間 (Sonnet)',
+    seven_day_oauth_apps: '7日間 (OAuth Apps)',
+    seven_day_cowork: '7日間 (Cowork)',
+  };
+  const preferredOrder = Object.keys(labels);
+  const pushed = new Set();
+  const pushWindow = (key, name) => {
     const w = data[key];
-    if (!w) continue;
-    const utilization = typeof w.utilization === 'number' ? w.utilization : 0;
+    if (!w || typeof w !== 'object') return;
+    if (typeof w.utilization !== 'number') return;
     windows.push({
       name,
-      utilization,
+      utilization: w.utilization,
       resetsAt: w.resets_at || null,
-      status: classifyUtilization(utilization),
+      status: classifyUtilization(w.utilization),
     });
+    pushed.add(key);
+  };
+
+  for (const key of preferredOrder) {
+    pushWindow(key, labels[key]);
+  }
+  for (const [key, value] of Object.entries(data)) {
+    if (pushed.has(key)) continue;
+    if (!value || typeof value !== 'object') continue;
+    if (typeof value.utilization !== 'number') continue;
+    const name = key.replaceAll('_', ' ');
+    pushWindow(key, name);
   }
   return windows;
 }
@@ -538,6 +615,7 @@ async function pollAll() {
   }
 
   render();
+  persistLastData();
   return anySuccess;
 }
 
@@ -662,6 +740,19 @@ document.addEventListener('DOMContentLoaded', () => {
   if (state.accounts.codex.length === 0) state.accounts.codex = [defaultAccount('codex', 0)];
   writeAccountsToDom('claude', state.accounts.claude);
   writeAccountsToDom('codex', state.accounts.codex);
+
+  // Restore last fetched data
+  try {
+    const svcs = sessionStorage.getItem('qm-services');
+    const raw = sessionStorage.getItem('qm-raw');
+    const fetchedAt = sessionStorage.getItem('qm-fetched-at');
+    if (svcs) {
+      state.services = JSON.parse(svcs);
+      state.rawResponses = raw ? JSON.parse(raw) : {};
+      render();
+      if (fetchedAt) log(`前回取得: ${new Date(fetchedAt).toLocaleString()}`);
+    }
+  } catch {}
 
   $('#btn-start').addEventListener('click', () => {
     if (state.polling) stopPolling(); else startPolling();
