@@ -1,6 +1,6 @@
 # Electron Migration Tracker
 
-最終更新: 2026-02-13 03:14 (JST)
+最終更新: 2026-02-13 03:31 (JST)
 目的: Electron 移行の「計画・メモ・進捗・残件」を単一ファイルで管理する。
 
 ## 運用ルール
@@ -103,6 +103,10 @@
 - 2026-02-13 03:14 JST
   - NSIS インストーラを one-click から対話型へ変更し、明示操作ありのインストールフローへ切替。
   - インストール先変更を許可し、ショートカット (デスクトップ/スタートメニュー) は既定 ON の設定を追加。
+- 2026-02-13 03:22 JST
+  - アプリバージョンを `0.0.1` に変更 (`package.json` / `package-lock.json` 先頭メタデータ)。
+- 2026-02-13 03:31 JST
+  - Windows 配布ターゲットに `zip` を追加し、`dist:win` で `nsis` と `zip` を同時生成する設定に変更。
 
 ## 残件 (Open Items)
 - P7: Node/npm がある環境で `npm install` -> `npm run start:web` / `npm run start:electron` / `npm run dist:win` を実機確認。

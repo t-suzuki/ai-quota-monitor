@@ -1,6 +1,6 @@
 {
   "name": "ai-quota-monitor",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "AI quota monitor",
   "engines": {
@@ -11,7 +11,7 @@
     "start": "node server.js",
     "start:web": "node server.js",
     "start:electron": "electron .",
-    "dist:win": "electron-builder --win nsis"
+    "dist:win": "electron-builder --win nsis zip"
   },
   "dependencies": {
     "keytar": "^7.9.0"
@@ -44,7 +44,8 @@
     },
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "zip"
       ],
       "artifactName": "${productName}-${version}-Setup-${arch}.${ext}"
     }
