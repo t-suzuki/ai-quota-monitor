@@ -8,15 +8,15 @@
 :root {
   --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
   --fg: #c9d1d9; --fg2: #8b949e; --fg3: #484f58;
-  --ok: #3fb950; --warn: #d29922; --crit: #f85149; --blue: #58a6ff;
+  --ok: #56d364; --warn: #e3b341; --crit: #ff7b72; --blue: #58a6ff;
   --radius: 8px; --font: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: var(--font); background: var(--bg); color: var(--fg); min-height: 100vh; }
-.container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
-h1 { font-size: 1.1rem; color: var(--fg2); margin-bottom: 4px; }
+.container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+h1 { font-size: 1.1rem; color: var(--fg2); margin-bottom: 16px; }
 h1 span { color: var(--ok); }
-.subtitle { font-size: 0.75rem; color: var(--fg3); margin-bottom: 24px; }
+.subtitle { font-size: 0.75rem; color: var(--fg3); margin-top: 24px; margin-bottom: 0; }
 
 /* Setup section */
 .setup { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
@@ -53,7 +53,7 @@ h1 span { color: var(--ok); }
 .btn-add { margin-top: 8px; }
 
 /* Controls */
-.controls { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.controls { display: flex; gap: 8px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
 .controls button { background: var(--bg2); border: 1px solid var(--bg3); color: var(--fg); padding: 6px 14px;
   border-radius: 4px; cursor: pointer; font-family: var(--font); font-size: 0.75rem; transition: background .15s; }
 .controls button:hover { background: var(--bg3); }
@@ -62,16 +62,22 @@ h1 span { color: var(--ok); }
 .controls .status { font-size: 0.7rem; color: var(--fg3); }
 
 /* Service cards */
-.card { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+.card { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 16px; }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .card-label { font-size: 0.85rem; font-weight: 600; }
 .card-status { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; }
-.card-status.ok { background: rgba(63,185,80,.15); color: var(--ok); }
-.card-status.warning { background: rgba(210,153,34,.15); color: var(--warn); }
-.card-status.critical { background: rgba(248,81,73,.15); color: var(--crit); }
-.card-status.exhausted { background: rgba(248,81,73,.3); color: var(--crit); }
+.card-status.ok { background: rgba(86,211,100,.15); color: var(--ok); }
+.card-status.warning { background: rgba(227,179,65,.15); color: var(--warn); }
+.card-status.critical { background: rgba(255,123,114,.15); color: var(--crit); }
+.card-status.exhausted { background: rgba(255,123,114,.3); color: var(--crit); }
 .card-status.unknown { background: var(--bg3); color: var(--fg3); }
-.card-status.error { background: rgba(248,81,73,.1); color: var(--fg3); }
+.card-status.error { background: rgba(255,123,114,.1); color: var(--fg3); }
+
+/* Dashboard grid */
+#dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.card-header-left { display: flex; align-items: center; gap: 8px; }
+.card-logo { flex-shrink: 0; width: 16px; height: 16px; color: var(--fg2); display: flex; align-items: center; }
+.card-logo svg { width: 16px; height: 16px; }
 
 .window { margin-bottom: 10px; }
 .window:last-child { margin-bottom: 0; }
@@ -82,7 +88,13 @@ h1 span { color: var(--ok); }
 .bar-fill.warning { background: var(--warn); }
 .bar-fill.critical { background: var(--crit); }
 .bar-fill.exhausted { background: var(--crit); }
-.window-footer { font-size: 0.65rem; color: var(--fg3); margin-top: 3px; text-align: right; }
+/* Elapsed time bar */
+.bar-track-elapsed { height: 4px; margin-top: 2px; }
+.bar-fill.elapsed { background: var(--blue); opacity: 0.45; }
+.reset-info { font-size: 0.78rem; color: var(--blue); margin-top: 4px; text-align: right; font-weight: 500; }
+/* Polling countdown ring */
+.poll-ring-wrap { display: flex; align-items: center; }
+.poll-ring-wrap svg { display: block; }
 
 /* Empty state */
 .empty { text-align: center; padding: 48px 16px; color: var(--fg3); font-size: 0.8rem; line-height: 1.8; }
@@ -103,6 +115,7 @@ h1 span { color: var(--ok); }
 
 @media (max-width: 480px) {
   .container { padding: 16px 10px; }
+  #dashboard { grid-template-columns: 1fr; }
   .card { padding: 12px; }
   .account-row { grid-template-columns: 1fr; }
   .btn-remove-account { width: 100%; }
@@ -112,10 +125,22 @@ h1 span { color: var(--ok); }
 <body>
 <div class="container">
   <h1>⚡ AI Quota <span>Monitor</span></h1>
-  <p class="subtitle">ブラウザ完結 — トークンはサーバーに保存されません</p>
+
+  <!-- Dashboard -->
+  <div id="dashboard"></div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button id="btn-start">▶ 開始</button>
+    <button id="btn-poll">⟳ 今すぐ取得</button>
+    <button id="btn-notify">🔔 通知許可</button>
+    <div class="spacer"></div>
+    <div class="poll-ring-wrap" id="poll-ring"></div>
+    <span class="status" id="poll-status"></span>
+  </div>
 
   <!-- Token Setup -->
-  <details class="setup" id="setup" open>
+  <details class="setup" id="setup">
     <summary>🔑 トークン設定</summary>
 
     <div class="field account-group">
@@ -178,18 +203,6 @@ h1 span { color: var(--ok); }
     </div>
   </details>
 
-  <!-- Controls -->
-  <div class="controls">
-    <button id="btn-start">▶ 開始</button>
-    <button id="btn-poll">⟳ 今すぐ取得</button>
-    <button id="btn-notify">🔔 通知許可</button>
-    <div class="spacer"></div>
-    <span class="status" id="poll-status"></span>
-  </div>
-
-  <!-- Dashboard -->
-  <div id="dashboard"></div>
-
   <!-- Raw responses for debugging -->
   <details class="raw" id="raw-section">
     <summary>🔍 生レスポンス (デバッグ用)</summary>
@@ -201,6 +214,8 @@ h1 span { color: var(--ok); }
     <summary>📋 ログ</summary>
     <div class="log-list" id="log-list"></div>
   </details>
+
+  <p class="subtitle">ブラウザ完結 — トークンはサーバーに保存されません</p>
 </div>
 
 <script>
@@ -210,16 +225,26 @@ h1 span { color: var(--ok); }
 const state = {
   polling: false,
   timer: null,
+  pollStartedAt: null,
+  pollInterval: 120,
+  ringTimer: null,
   accounts: { claude: [], codex: [] }, // [{ id, name, token }]
   services: {},   // { id: { label, windows: [{name, utilization, resetsAt}], status, lastRaw } }
   logs: [],
   rawResponses: {},
+  history: {},    // { 'serviceKey:windowName': [util1, util2, ...] }
 };
 
 const THRESHOLDS = { warning: 75, critical: 90, exhausted: 100 };
 const SERVICE_META = {
-  claude: { label: 'Claude Code', listId: '#claude-accounts', addBtnId: '#btn-add-claude' },
-  codex: { label: 'Codex', listId: '#codex-accounts', addBtnId: '#btn-add-codex' },
+  claude: {
+    label: 'Claude Code', listId: '#claude-accounts', addBtnId: '#btn-add-claude',
+    icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="8" y1="1" x2="8" y2="15"/><line x1="1.9" y1="4.5" x2="14.1" y2="11.5"/><line x1="14.1" y1="4.5" x2="1.9" y2="11.5"/></svg>',
+  },
+  codex: {
+    label: 'Codex', listId: '#codex-accounts', addBtnId: '#btn-add-codex',
+    icon: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M8 1l6.1 3.5v7L8 15l-6.1-3.5v-7z"/><path d="M8 5l3 1.75v3.5L8 12l-3-1.75v-3.5z"/></svg>',
+  },
 };
 
 // ═══════════════════════════════════════
@@ -265,9 +290,9 @@ function formatReset(epoch) {
   const m = Math.floor((diff % 3600000) / 60000);
   const dateStr = d.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' });
   const timeStr = d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-  if (h >= 24) return `${dateStr} ${timeStr} (残${Math.floor(h/24)}日${h%24}時間)`;
-  if (h > 0) return `${timeStr} (残${h}時間${m}分)`;
-  return `${timeStr} (残${m}分)`;
+  if (h >= 24) return `${dateStr} ${timeStr} (あと${Math.floor(h/24)}日${h%24}時間)`;
+  if (h > 0) return `${timeStr} (あと${h}時間${m}分)`;
+  return `${timeStr} (あと${m}分)`;
 }
 
 function notify(title, body) {
@@ -353,7 +378,17 @@ function persistLastData() {
   try {
     sessionStorage.setItem('qm-services', JSON.stringify(state.services));
     sessionStorage.setItem('qm-raw', JSON.stringify(state.rawResponses));
+    sessionStorage.setItem('qm-history', JSON.stringify(state.history));
     sessionStorage.setItem('qm-fetched-at', new Date().toISOString());
+  } catch {}
+}
+
+function persistPollingState() {
+  try {
+    sessionStorage.setItem('qm-poll-state', JSON.stringify({
+      startedAt: state.pollStartedAt,
+      interval: state.pollInterval,
+    }));
   } catch {}
 }
 
@@ -387,6 +422,11 @@ function parseClaude(data) {
     seven_day_oauth_apps: '7日間 (OAuth Apps)',
     seven_day_cowork: '7日間 (Cowork)',
   };
+  const winSecMap = {
+    five_hour: 18000,
+    seven_day: 604800, seven_day_opus: 604800, seven_day_sonnet: 604800,
+    seven_day_oauth_apps: 604800, seven_day_cowork: 604800,
+  };
   const preferredOrder = Object.keys(labels);
   const pushed = new Set();
   const pushWindow = (key, name) => {
@@ -398,6 +438,7 @@ function parseClaude(data) {
       utilization: w.utilization,
       resetsAt: w.resets_at || null,
       status: classifyUtilization(w.utilization),
+      windowSeconds: winSecMap[key] || (key.startsWith('seven_day') ? 604800 : key.includes('hour') ? 18000 : null),
     });
     pushed.add(key);
   };
@@ -468,11 +509,13 @@ function parseCodex(data) {
     const allowed = windowData.allowed ?? parent?.allowed;
     let status = classifyUtilization(utilization);
     if (limitReached === true || allowed === false) status = 'exhausted';
+    const ws = toNumber(windowData.limit_window_seconds ?? windowData.limitWindowSeconds) || null;
     windows.push({
-      name: normalizeWindowName(windowData.limit_window_seconds ?? windowData.limitWindowSeconds, label),
+      name: normalizeWindowName(ws, label),
       utilization,
       resetsAt: windowData.reset_at ?? windowData.resetAt ?? windowData.resets_at ?? windowData.resetsAt ?? null,
       status,
+      windowSeconds: ws,
     });
   };
   const parseWhamRateLimit = (block, prefix) => {
@@ -554,6 +597,7 @@ async function pollAll() {
       const data = await fetchClaude(acc.token);
       state.rawResponses[serviceKey] = data;
       const windows = parseClaude(data);
+      for (const w of windows) { recordHistory(`${serviceKey}:${w.name}`, w.utilization); }
       const worstStatus = worstOf(windows);
 
       const prev = state.services[serviceKey]?.status;
@@ -584,6 +628,7 @@ async function pollAll() {
       const data = await fetchCodex(acc.token);
       state.rawResponses[serviceKey] = data;
       const windows = parseCodex(data);
+      for (const w of windows) { recordHistory(`${serviceKey}:${w.name}`, w.utilization); }
       const worstStatus = worstOf(windows);
 
       const prev = state.services[serviceKey]?.status;
@@ -620,6 +665,73 @@ async function pollAll() {
 }
 
 // ═══════════════════════════════════════
+// History & bar helpers
+// ═══════════════════════════════════════
+function recordHistory(key, utilization) {
+  if (!state.history[key]) state.history[key] = [];
+  const arr = state.history[key];
+  // If utilization dropped significantly (quota reset), clear history
+  if (arr.length > 0 && utilization < arr[arr.length - 1] - 5) arr.length = 0;
+  arr.push(utilization);
+  if (arr.length > 10) arr.shift();
+}
+
+const STATUS_RGB = {
+  ok: '86,211,100', warning: '227,179,65',
+  critical: '255,123,114', exhausted: '255,123,114',
+};
+
+function buildBarGradient(history, status) {
+  const rgb = STATUS_RGB[status] || STATUS_RGB.ok;
+  if (!history || history.length <= 1) return '';
+  const total = history[history.length - 1];
+  if (total <= 0) return '';
+  const stops = [];
+  const n = history.length;
+  for (let i = 0; i < n; i++) {
+    const segStart = i === 0 ? 0 : history[i - 1];
+    const segEnd = history[i];
+    if (segEnd <= segStart) continue;
+    const alpha = (0.25 + 0.75 * (i / Math.max(n - 1, 1))).toFixed(2);
+    const pS = ((segStart / total) * 100).toFixed(1);
+    const pE = ((segEnd / total) * 100).toFixed(1);
+    stops.push(`rgba(${rgb},${alpha}) ${pS}%`, `rgba(${rgb},${alpha}) ${pE}%`);
+  }
+  if (stops.length === 0) return '';
+  return `background:linear-gradient(to right,${stops.join(',')})`;
+}
+
+function calcElapsedPct(resetsAt, windowSeconds) {
+  if (!resetsAt || !windowSeconds) return null;
+  const d = typeof resetsAt === 'number' ? new Date(resetsAt * 1000) : new Date(resetsAt);
+  if (isNaN(d)) return null;
+  const remainSec = Math.max(0, (d - new Date()) / 1000);
+  const elapsedSec = windowSeconds - remainSec;
+  return Math.max(0, Math.min(100, (elapsedSec / windowSeconds) * 100));
+}
+
+// ═══════════════════════════════════════
+// Polling countdown ring
+// ═══════════════════════════════════════
+function updatePollRing() {
+  const el = $('#poll-ring');
+  if (!el) return;
+  if (!state.polling || !state.pollStartedAt) { el.innerHTML = ''; return; }
+  const elapsed = (Date.now() - state.pollStartedAt) / 1000;
+  const remaining = Math.max(0, state.pollInterval - elapsed);
+  const fraction = remaining / state.pollInterval;
+  const R = 14, C = 2 * Math.PI * R;
+  const offset = C * (1 - fraction);
+  const color = fraction > 0.3 ? 'var(--ok)' : fraction > 0.1 ? 'var(--warn)' : 'var(--crit)';
+  el.innerHTML = `<svg viewBox="0 0 36 36" width="32" height="32">
+    <circle cx="18" cy="18" r="${R}" fill="none" stroke="var(--bg3)" stroke-width="2.5"/>
+    <circle cx="18" cy="18" r="${R}" fill="none" stroke="${color}" stroke-width="2.5"
+      stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="-${offset.toFixed(2)}"
+      stroke-linecap="round" transform="rotate(-90 18 18)"/>
+  </svg>`;
+}
+
+// ═══════════════════════════════════════
 // Render
 // ═══════════════════════════════════════
 function render() {
@@ -632,32 +744,47 @@ function render() {
   }
 
   dash.innerHTML = entries.map(([id, svc]) => {
+    const serviceType = id.split(':')[0];
+    const meta = SERVICE_META[serviceType];
+    const logoHtml = meta?.icon ? `<span class="card-logo">${meta.icon}</span>` : '';
+
     if (svc.error && svc.windows.length === 0) {
       return `<div class="card">
         <div class="card-header">
-          <span class="card-label">${svc.label}</span>
+          <span class="card-header-left">${logoHtml}<span class="card-label">${svc.label}</span></span>
           <span class="card-status error">エラー</span>
         </div>
         <div style="font-size:.72rem;color:var(--crit)">${escHtml(svc.error)}</div>
       </div>`;
     }
 
-    const windowsHtml = svc.windows.map(w => `
-      <div class="window">
+    const windowsHtml = svc.windows.map(w => {
+      const histKey = `${id}:${w.name}`;
+      const hist = state.history[histKey] || [];
+      const grad = buildBarGradient(hist, w.status);
+      const barStyle = grad ? `${grad};width:${Math.min(w.utilization, 100)}%`
+                            : `width:${Math.min(w.utilization, 100)}%`;
+      const elPct = calcElapsedPct(w.resetsAt, w.windowSeconds);
+      const elStr = elPct !== null ? ` / 経過 ${elPct.toFixed(0)}%` : '';
+      const elBar = elPct !== null
+        ? `<div class="bar-track bar-track-elapsed"><div class="bar-fill elapsed" style="width:${Math.min(elPct, 100)}%"></div></div>`
+        : '';
+      return `<div class="window">
         <div class="window-header">
           <span>${w.name}</span>
-          <span>${w.utilization.toFixed(1)}% 使用</span>
+          <span>使用 ${w.utilization.toFixed(1)}%${elStr}</span>
         </div>
         <div class="bar-track">
-          <div class="bar-fill ${w.status}" style="width:${Math.min(w.utilization, 100)}%"></div>
+          <div class="bar-fill ${w.status}" style="${barStyle}"></div>
         </div>
-        ${w.resetsAt ? `<div class="window-footer">リセット: ${formatReset(w.resetsAt)}</div>` : ''}
-      </div>
-    `).join('');
+        ${elBar}
+        ${w.resetsAt ? `<div class="reset-info">リセット: ${formatReset(w.resetsAt)}</div>` : ''}
+      </div>`;
+    }).join('');
 
     return `<div class="card">
       <div class="card-header">
-        <span class="card-label">${svc.label}</span>
+        <span class="card-header-left">${logoHtml}<span class="card-label">${svc.label}</span></span>
         <span class="card-status ${svc.status}">${svc.status}</span>
       </div>
       ${windowsHtml}
@@ -691,27 +818,82 @@ function startPolling() {
   stopPolling();
   const intervalSec = Math.max(30, parseInt($('#poll-interval').value) || 120);
   state.polling = true;
+  state.pollInterval = intervalSec;
+  state.pollStartedAt = Date.now();
+  persistPollingState();
   $('#btn-start').textContent = '⏹ 停止';
   $('#btn-start').classList.add('active');
-  updatePollStatus('ポーリング中...');
-  pollAll();
+  updatePollStatus('取得中...');
+  pollAll().then(() => { state.pollStartedAt = Date.now(); persistPollingState(); updatePollRing(); updateCountdown(); });
   state.timer = setInterval(() => {
     updatePollStatus('取得中...');
-    pollAll().then(() => updatePollStatus(`次回: ${intervalSec}秒後`));
+    pollAll().then(() => {
+      state.pollStartedAt = Date.now();
+      persistPollingState();
+      updateCountdown();
+    });
   }, intervalSec * 1000);
+  state.ringTimer = setInterval(() => { updatePollRing(); updateCountdown(); }, 1000);
   persistSetup();
 }
 
 function stopPolling() {
   state.polling = false;
   if (state.timer) { clearInterval(state.timer); state.timer = null; }
+  if (state.ringTimer) { clearInterval(state.ringTimer); state.ringTimer = null; }
+  state.pollStartedAt = null;
+  updatePollRing();
+  sessionStorage.removeItem('qm-poll-state');
   $('#btn-start').textContent = '▶ 開始';
   $('#btn-start').classList.remove('active');
   updatePollStatus('停止中');
 }
 
+function resumePolling(startedAt, intervalSec) {
+  state.polling = true;
+  state.pollInterval = intervalSec;
+  $('#btn-start').textContent = '⏹ 停止';
+  $('#btn-start').classList.add('active');
+
+  const doPoll = () => {
+    updatePollStatus('取得中...');
+    pollAll().then(() => {
+      state.pollStartedAt = Date.now();
+      persistPollingState();
+      updateCountdown();
+    });
+  };
+  const scheduleRegular = () => {
+    state.timer = setInterval(doPoll, intervalSec * 1000);
+  };
+
+  const elapsed = (Date.now() - startedAt) / 1000;
+  if (elapsed >= intervalSec) {
+    state.pollStartedAt = Date.now();
+    doPoll();
+    scheduleRegular();
+  } else {
+    state.pollStartedAt = startedAt;
+    updateCountdown();
+    state.timer = setTimeout(() => {
+      doPoll();
+      scheduleRegular();
+    }, (intervalSec - elapsed) * 1000);
+  }
+
+  state.ringTimer = setInterval(() => { updatePollRing(); updateCountdown(); }, 1000);
+  updatePollRing();
+}
+
 function updatePollStatus(msg) {
   $('#poll-status').textContent = msg;
+}
+
+function updateCountdown() {
+  if (!state.polling || !state.pollStartedAt) return;
+  const elapsed = (Date.now() - state.pollStartedAt) / 1000;
+  const remaining = Math.max(0, Math.ceil(state.pollInterval - elapsed));
+  updatePollStatus(`次回更新: ${remaining}秒後`);
 }
 
 // ═══════════════════════════════════════
@@ -741,6 +923,10 @@ document.addEventListener('DOMContentLoaded', () => {
   writeAccountsToDom('claude', state.accounts.claude);
   writeAccountsToDom('codex', state.accounts.codex);
 
+  // Open setup if no tokens registered
+  const hasAnyToken = [...state.accounts.claude, ...state.accounts.codex].some(a => a.token);
+  if (!hasAnyToken) $('#setup').open = true;
+
   // Restore last fetched data
   try {
     const svcs = sessionStorage.getItem('qm-services');
@@ -749,17 +935,32 @@ document.addEventListener('DOMContentLoaded', () => {
     if (svcs) {
       state.services = JSON.parse(svcs);
       state.rawResponses = raw ? JSON.parse(raw) : {};
+      const histRaw = sessionStorage.getItem('qm-history');
+      if (histRaw) state.history = JSON.parse(histRaw);
       render();
       if (fetchedAt) log(`前回取得: ${new Date(fetchedAt).toLocaleString()}`);
     }
   } catch {}
 
   $('#btn-start').addEventListener('click', () => {
-    if (state.polling) stopPolling(); else startPolling();
+    if (state.polling) { stopPolling(); return; }
+    const accounts = collectAccounts();
+    if (![...accounts.claude, ...accounts.codex].some(a => a.token)) {
+      log('トークンが設定されていません', 'warn');
+      $('#setup').open = true;
+      return;
+    }
+    startPolling();
   });
 
   $('#btn-poll').addEventListener('click', () => {
-    updatePollStatus('手動取得中...');
+    const accounts = collectAccounts();
+    if (![...accounts.claude, ...accounts.codex].some(a => a.token)) {
+      log('トークンが設定されていません', 'warn');
+      $('#setup').open = true;
+      return;
+    }
+    updatePollStatus('取得中...');
     pollAll().then(() => updatePollStatus('取得完了'));
   });
 
@@ -778,7 +979,18 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!restored) persistSetup();
 
   render();
-  updatePollStatus('停止中');
+
+  // Restore polling state
+  try {
+    const ps = JSON.parse(sessionStorage.getItem('qm-poll-state'));
+    if (ps && ps.startedAt && ps.interval) {
+      resumePolling(ps.startedAt, ps.interval);
+    } else {
+      updatePollStatus('停止中');
+    }
+  } catch {
+    updatePollStatus('停止中');
+  }
 });
 </script>
 </body>
