@@ -1,10 +1,10 @@
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { fetchClaudeUsageRaw, fetchCodexUsageRaw, safeJsonParse } = require('./src/core/usage-clients');
 
 const PORT = Number(process.env.PORT || 4173);
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const ANTHROPIC_OAUTH_BETA = 'oauth-2025-04-20';
 
 function corsHeaders(req) {
   return {
@@ -36,19 +36,12 @@ async function handleClaude(req, res) {
     return;
   }
   try {
-    const upstream = await fetch('https://api.anthropic.com/api/oauth/usage', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        'anthropic-beta': ANTHROPIC_OAUTH_BETA,
-      },
-    });
-    const body = await upstream.text();
+    const upstream = await fetchClaudeUsageRaw(token);
     res.writeHead(upstream.status, {
       ...corsHeaders(req),
-      'Content-Type': upstream.headers.get('content-type') || 'application/json',
+      'Content-Type': upstream.contentType,
     });
-    res.end(body);
+    res.end(upstream.body);
   } catch (e) {
     writeJson(res, req, 502, { error: 'Upstream request failed', detail: String(e.message || e) });
   }
@@ -70,32 +63,31 @@ async function handleCodex(req, res) {
     return;
   }
   try {
-    const upstream = await fetch('https://chatgpt.com/backend-api/wham/usage', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
-    });
-    const body = await upstream.text();
-    const contentType = upstream.headers.get('content-type') || 'application/json';
+    const upstream = await fetchCodexUsageRaw(token);
+    const contentType = upstream.contentType;
+    const parsed = safeJsonParse(upstream.body);
 
     if (!upstream.ok && upstream.status === 403 && contentType.includes('text/html')) {
       writeJson(res, req, 403, {
         error: 'Upstream blocked request (OpenAI edge / Cloudflare)',
         detail: 'Local request was blocked by chatgpt.com edge protections.',
-        upstream_status: upstream.status,
+        upstream_status: 403,
       });
       return;
     }
 
     const headers = { ...corsHeaders(req), 'Content-Type': contentType };
-    for (const [k, v] of upstream.headers.entries()) {
+    for (const [k, v] of Object.entries(upstream.headers)) {
       if (k.startsWith('x-ratelimit') || k.startsWith('x-rate-limit') || k === 'retry-after') {
         headers[`x-upstream-${k}`] = v;
       }
     }
     res.writeHead(upstream.status, headers);
-    res.end(body);
+    if (!upstream.ok && parsed && typeof parsed === 'object') {
+      res.end(JSON.stringify(parsed));
+      return;
+    }
+    res.end(upstream.body);
   } catch (e) {
     writeJson(res, req, 502, { error: 'Upstream request failed', detail: String(e.message || e) });
   }
