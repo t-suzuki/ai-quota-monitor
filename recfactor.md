@@ -48,6 +48,9 @@
       - 閾値変更時の再分類と最悪ステータス判定
       - 通知/ログの遷移条件 (critical, warning, recovery)
       - 経過率計算とポーリング残秒/色のタイミング判定
+  - 追加分割:
+    - `electron/main.js` からストア正規化・永続化を `electron/store.js` に分離。
+    - `public/app.js` からアカウント入力UI操作を `public/account-ui.js` に分離。
 
 ## メモ
 - `public/app.js` が 1200 行超で、Web fallback と Electron 分岐が複雑化の主要因。

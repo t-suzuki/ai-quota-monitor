@@ -24,11 +24,12 @@ if (!window.quotaApi || window.quotaApi.platform !== 'electron') {
 if (!window.UiLogic) {
   throw new Error('UiLogic helpers are required');
 }
+if (!window.AccountUi) {
+  throw new Error('AccountUi helpers are required');
+}
 const {
   deriveServiceStatus,
   buildTransitionEffects,
-  deriveTokenInputValue,
-  normalizeAccountToken,
   calcElapsedPct: calcElapsedPctValue,
   computePollingState,
 } = window.UiLogic;
@@ -128,124 +129,6 @@ function checkStatusTransition(prev, next, label, windows) {
   }
 }
 
-function makeAccountId(service) {
-  return `${service}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function defaultAccount(service, idx = 0) {
-  const base = SERVICE_META[service].label;
-  return { id: makeAccountId(service), name: `${base} ${idx + 1}`, token: '', hasToken: false };
-}
-
-function accountFromRow(row) {
-  const id = row.dataset.accountId || '';
-  const name = row.querySelector('.account-name')?.value?.trim() || '';
-  const rawToken = row.querySelector('.account-token')?.value || '';
-  const token = normalizeAccountToken({
-    rawToken,
-    tokenMasked: row.dataset.tokenMasked === '1',
-    savedTokenMask: SAVED_TOKEN_MASK,
-  });
-  const hasToken = row.dataset.hasToken === '1';
-  return { id, name, token, hasToken };
-}
-
-function readAccountsFromDom(service) {
-  const list = $(SERVICE_META[service].listId);
-  const rows = Array.from(list.querySelectorAll('.account-row'));
-  return rows.map(accountFromRow);
-}
-
-function writeAccountsToDom(service, accounts) {
-  const list = $(SERVICE_META[service].listId);
-  list.innerHTML = '';
-  for (const acc of accounts) {
-    const row = document.createElement('div');
-    row.className = 'account-row';
-    row.dataset.accountId = acc.id || makeAccountId(service);
-    row.dataset.hasToken = acc.hasToken ? '1' : '0';
-    const tokenView = deriveTokenInputValue({
-      hasToken: acc.hasToken,
-      token: acc.token,
-      savedTokenMask: SAVED_TOKEN_MASK,
-    });
-    row.dataset.tokenMasked = tokenView.tokenMasked ? '1' : '0';
-    const tokenValue = tokenView.tokenValue;
-    const tokenPlaceholder = 'eyJhbG... / sk-...';
-    row.innerHTML = `
-      <input class="account-name" type="text" placeholder="表示名" value="${escHtml(acc.name || '')}">
-      <input class="account-token" type="text" placeholder="${escHtml(tokenPlaceholder)}" value="${escHtml(tokenValue)}">
-      <button class="btn-mini btn-remove-account" type="button">削除</button>
-    `;
-    row.querySelector('.btn-remove-account').addEventListener('click', async () => {
-      const removed = accountFromRow(row);
-      if (removed.id) {
-        try {
-          await window.quotaApi.deleteAccount({ service, id: removed.id });
-        } catch (e) {
-          log(`削除失敗: ${SERVICE_META[service].label} ${removed.name || removed.id} (${e.message || e})`, 'warn');
-        }
-      }
-      row.remove();
-      if (!list.querySelector('.account-row')) addAccountRow(service);
-      queuePersistSetup();
-    });
-    row.querySelector('.account-name').addEventListener('input', queuePersistSetup);
-    const tokenInput = row.querySelector('.account-token');
-    tokenInput.addEventListener('focus', () => {
-      if (row.dataset.tokenMasked === '1' && tokenInput.value === SAVED_TOKEN_MASK) {
-        setTimeout(() => tokenInput.select(), 0);
-      }
-    });
-    tokenInput.addEventListener('input', () => {
-      row.dataset.tokenMasked = '0';
-      row.dataset.hasToken = tokenInput.value?.trim() ? '0' : row.dataset.hasToken;
-      queuePersistSetup();
-    });
-    list.appendChild(row);
-  }
-}
-
-function addAccountRow(service, account = null) {
-  const existing = readAccountsFromDom(service);
-  const next = account || defaultAccount(service, existing.length);
-  writeAccountsToDom(service, [...existing, next]);
-  queuePersistSetup();
-}
-
-function collectAccounts() {
-  const collected = {};
-  for (const service of Object.keys(SERVICE_META)) {
-    const rows = readAccountsFromDom(service);
-    collected[service] = rows.map((acc, idx) => ({
-      id: acc.id || makeAccountId(service),
-      name: acc.name || `${SERVICE_META[service].label} ${idx + 1}`,
-      token: acc.token || '',
-      hasToken: Boolean(acc.hasToken),
-    }));
-  }
-  return collected;
-}
-
-function upsertDomTokenState(service, id, hasToken) {
-  const list = $(SERVICE_META[service].listId);
-  const row = Array.from(list.querySelectorAll('.account-row'))
-    .find((candidate) => candidate.dataset.accountId === id);
-  if (!row) return;
-  row.dataset.hasToken = hasToken ? '1' : '0';
-  const tokenInput = row.querySelector('.account-token');
-  if (tokenInput) {
-    tokenInput.placeholder = 'eyJhbG... / sk-...';
-    if (hasToken) {
-      tokenInput.value = SAVED_TOKEN_MASK;
-      row.dataset.tokenMasked = '1';
-    } else if (!hasToken) {
-      tokenInput.value = '';
-      row.dataset.tokenMasked = '0';
-    }
-  }
-}
-
 async function resolveAppVersion() {
   try {
     return await window.quotaApi.getVersion();
@@ -264,6 +147,25 @@ const minimalDragState = {
   width: 0,
   height: 0,
 };
+const accountUi = window.AccountUi.createAccountUi({
+  query: $,
+  serviceMeta: SERVICE_META,
+  savedTokenMask: SAVED_TOKEN_MASK,
+  escHtml,
+  deriveTokenInputValue: window.UiLogic.deriveTokenInputValue,
+  normalizeAccountToken: window.UiLogic.normalizeAccountToken,
+  queuePersistSetup,
+  deleteAccount: (payload) => window.quotaApi.deleteAccount(payload),
+  log,
+});
+const {
+  defaultAccount,
+  writeAccountsToDom,
+  addAccountRow,
+  collectAccounts,
+  upsertDomTokenState,
+} = accountUi;
+
 async function persistSetup() {
   try {
     const accounts = collectAccounts();

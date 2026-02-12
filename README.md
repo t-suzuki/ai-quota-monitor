@@ -120,9 +120,11 @@ security find-generic-password -s "Codex Auth" -w | jq -r '.tokens.access_token'
 ai-quota-monitor/
 ├── electron/
 │   ├── main.js
-│   └── preload.js
+│   ├── preload.js
+│   └── store.js
 ├── public/
 │   ├── app.js
+│   ├── account-ui.js
 │   ├── index.html
 │   └── ui-logic.js
 ├── src/
