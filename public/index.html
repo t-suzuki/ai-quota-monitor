@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Quota Monitor</title>
+<style>
+:root {
+  --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+  --fg: #c9d1d9; --fg2: #8b949e; --fg3: #484f58;
+  --ok: #3fb950; --warn: #d29922; --crit: #f85149; --blue: #58a6ff;
+  --radius: 8px; --font: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--font); background: var(--bg); color: var(--fg); min-height: 100vh; }
+.container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
+h1 { font-size: 1.1rem; color: var(--fg2); margin-bottom: 4px; }
+h1 span { color: var(--ok); }
+.subtitle { font-size: 0.75rem; color: var(--fg3); margin-bottom: 24px; }
+
+/* Setup section */
+.setup { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+.setup summary { cursor: pointer; font-size: 0.85rem; color: var(--blue); user-select: none; }
+.setup summary:hover { text-decoration: underline; }
+.setup[open] summary { margin-bottom: 12px; }
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 0.75rem; color: var(--fg2); margin-bottom: 4px; }
+.field .row { display: flex; gap: 8px; }
+.field input { flex: 1; background: var(--bg); border: 1px solid var(--bg3); color: var(--fg); padding: 8px 10px;
+  border-radius: 4px; font-family: var(--font); font-size: 0.8rem; outline: none; }
+.field input:focus { border-color: var(--blue); }
+.field input::placeholder { color: var(--fg3); }
+.help { font-size: 0.7rem; color: var(--fg3); margin-top: 4px; line-height: 1.6; }
+.help code { background: var(--bg3); padding: 1px 5px; border-radius: 3px; font-size: 0.68rem; }
+.account-group { margin-bottom: 14px; }
+.account-list { display: flex; flex-direction: column; gap: 8px; }
+.account-row { display: grid; grid-template-columns: 160px 1fr auto; gap: 8px; }
+.account-row input { width: 100%; }
+.btn-mini { background: var(--bg2); border: 1px solid var(--bg3); color: var(--fg2); padding: 6px 10px;
+  border-radius: 4px; cursor: pointer; font-family: var(--font); font-size: 0.7rem; }
+.btn-mini:hover { background: var(--bg3); color: var(--fg); }
+.btn-add { margin-top: 8px; }
+
+/* Controls */
+.controls { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.controls button { background: var(--bg2); border: 1px solid var(--bg3); color: var(--fg); padding: 6px 14px;
+  border-radius: 4px; cursor: pointer; font-family: var(--font); font-size: 0.75rem; transition: background .15s; }
+.controls button:hover { background: var(--bg3); }
+.controls button.active { border-color: var(--ok); color: var(--ok); }
+.controls .spacer { flex: 1; }
+.controls .status { font-size: 0.7rem; color: var(--fg3); }
+
+/* Service cards */
+.card { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.card-label { font-size: 0.85rem; font-weight: 600; }
+.card-status { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; }
+.card-status.ok { background: rgba(63,185,80,.15); color: var(--ok); }
+.card-status.warning { background: rgba(210,153,34,.15); color: var(--warn); }
+.card-status.critical { background: rgba(248,81,73,.15); color: var(--crit); }
+.card-status.exhausted { background: rgba(248,81,73,.3); color: var(--crit); }
+.card-status.unknown { background: var(--bg3); color: var(--fg3); }
+.card-status.error { background: rgba(248,81,73,.1); color: var(--fg3); }
+
+.window { margin-bottom: 10px; }
+.window:last-child { margin-bottom: 0; }
+.window-header { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--fg2); margin-bottom: 4px; }
+.bar-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease, background .3s; }
+.bar-fill.ok { background: var(--ok); }
+.bar-fill.warning { background: var(--warn); }
+.bar-fill.critical { background: var(--crit); }
+.bar-fill.exhausted { background: var(--crit); }
+.window-footer { font-size: 0.65rem; color: var(--fg3); margin-top: 3px; text-align: right; }
+
+/* Empty state */
+.empty { text-align: center; padding: 48px 16px; color: var(--fg3); font-size: 0.8rem; line-height: 1.8; }
+
+/* Log */
+.log-section { margin-top: 24px; }
+.log-section summary { font-size: 0.75rem; color: var(--fg3); cursor: pointer; }
+.log-list { max-height: 200px; overflow-y: auto; margin-top: 8px; font-size: 0.65rem; color: var(--fg3); line-height: 1.8; }
+.log-list .warn { color: var(--warn); }
+.log-list .crit { color: var(--crit); }
+.log-list .ok { color: var(--ok); }
+
+/* Raw response viewer */
+.raw { margin-top: 16px; }
+.raw summary { font-size: 0.75rem; color: var(--fg3); cursor: pointer; }
+.raw pre { background: var(--bg); border: 1px solid var(--bg3); border-radius: 4px; padding: 12px;
+  margin-top: 8px; font-size: 0.65rem; overflow-x: auto; max-height: 300px; overflow-y: auto; color: var(--fg2); }
+
+@media (max-width: 480px) {
+  .container { padding: 16px 10px; }
+  .card { padding: 12px; }
+  .account-row { grid-template-columns: 1fr; }
+  .btn-remove-account { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>⚡ AI Quota <span>Monitor</span></h1>
+  <p class="subtitle">ブラウザ完結 — トークンはサーバーに保存されません</p>
+
+  <!-- Token Setup -->
+  <details class="setup" id="setup" open>
+    <summary>🔑 トークン設定</summary>
+
+    <div class="field account-group">
+      <label>Claude Code アカウント (名前 + OAuth Token)</label>
+      <div class="account-list" id="claude-accounts"></div>
+      <button class="btn-mini btn-add" id="btn-add-claude" type="button">+ Claude を追加</button>
+      <div class="help">
+        <strong>取得方法:</strong><br>
+        macOS: <code>security find-generic-password -s "Claude Code-credentials" -w | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['claudeAiOauth']['accessToken'])"</code><br>
+        Linux: <code>cat ~/.config/claude/credentials.json | jq -r '.claudeAiOauth.accessToken'</code><br>
+        Windows (PowerShell): <code>(Get-Content "$env:USERPROFILE\.claude\credentials.json" -Raw | ConvertFrom-Json).claudeAiOauth.accessToken</code>
+      </div>
+    </div>
+
+    <div class="field account-group">
+      <label>Codex アカウント (名前 + Access Token)</label>
+      <div class="account-list" id="codex-accounts"></div>
+      <button class="btn-mini btn-add" id="btn-add-codex" type="button">+ Codex を追加</button>
+      <div class="help">
+        <strong>取得方法:</strong><br>
+        Linux/macOS: <code>cat ~/.codex/auth.json | jq -r '.tokens.access_token'</code><br>
+        macOS (Keychain): <code>security find-generic-password -s "Codex Auth" -w | jq -r '.tokens.access_token'</code><br>
+        Windows (PowerShell): <code>(Get-Content "$env:USERPROFILE\.codex\auth.json" -Raw | ConvertFrom-Json).tokens.access_token</code>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>ポーリング間隔 (秒)</label>
+      <div class="row">
+        <input type="number" id="poll-interval" value="120" min="30" max="600" style="max-width:100px">
+      </div>
+    </div>
+  </details>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button id="btn-start">▶ 開始</button>
+    <button id="btn-poll">⟳ 今すぐ取得</button>
+    <button id="btn-notify">🔔 通知許可</button>
+    <div class="spacer"></div>
+    <span class="status" id="poll-status"></span>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard"></div>
+
+  <!-- Raw responses for debugging -->
+  <details class="raw" id="raw-section">
+    <summary>🔍 生レスポンス (デバッグ用)</summary>
+    <pre id="raw-data">まだ取得されていません</pre>
+  </details>
+
+  <!-- Log -->
+  <details class="log-section">
+    <summary>📋 ログ</summary>
+    <div class="log-list" id="log-list"></div>
+  </details>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// State
+// ═══════════════════════════════════════
+const state = {
+  polling: false,
+  timer: null,
+  accounts: { claude: [], codex: [] }, // [{ id, name, token }]
+  services: {},   // { id: { label, windows: [{name, utilization, resetsAt}], status, lastRaw } }
+  logs: [],
+  rawResponses: {},
+};
+
+const THRESHOLDS = { warning: 75, critical: 90, exhausted: 100 };
+const SERVICE_META = {
+  claude: { label: 'Claude Code', listId: '#claude-accounts', addBtnId: '#btn-add-claude' },
+  codex: { label: 'Codex', listId: '#codex-accounts', addBtnId: '#btn-add-codex' },
+};
+
+// ═══════════════════════════════════════
+// Utils
+// ═══════════════════════════════════════
+const $ = s => document.querySelector(s);
+const log = (msg, level = '') => {
+  const ts = new Date().toLocaleTimeString();
+  state.logs.unshift({ ts, msg, level });
+  if (state.logs.length > 200) state.logs.length = 200;
+  renderLogs();
+};
+
+function classifyUtilization(pct) {
+  if (pct >= THRESHOLDS.exhausted) return 'exhausted';
+  if (pct >= THRESHOLDS.critical) return 'critical';
+  if (pct >= THRESHOLDS.warning) return 'warning';
+  return 'ok';
+}
+
+function formatReset(epoch) {
+  if (!epoch) return '';
+  const d = typeof epoch === 'number' ? new Date(epoch * 1000) : new Date(epoch);
+  if (isNaN(d)) return '';
+  const now = new Date();
+  const diff = d - now;
+  if (diff <= 0) return 'リセット済み';
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const dateStr = d.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' });
+  const timeStr = d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  if (h >= 24) return `${dateStr} ${timeStr} (残${Math.floor(h/24)}日${h%24}時間)`;
+  if (h > 0) return `${timeStr} (残${h}時間${m}分)`;
+  return `${timeStr} (残${m}分)`;
+}
+
+function notify(title, body) {
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body, icon: '⚡' });
+  }
+}
+
+function makeAccountId(service) {
+  return `${service}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function defaultAccount(service, idx = 0) {
+  const base = SERVICE_META[service].label;
+  return { id: makeAccountId(service), name: `${base} ${idx + 1}`, token: '' };
+}
+
+function accountFromRow(row) {
+  const id = row.dataset.accountId || '';
+  const name = row.querySelector('.account-name')?.value?.trim() || '';
+  const token = row.querySelector('.account-token')?.value?.trim() || '';
+  return { id, name, token };
+}
+
+function readAccountsFromDom(service) {
+  const list = $(SERVICE_META[service].listId);
+  const rows = Array.from(list.querySelectorAll('.account-row'));
+  return rows.map(accountFromRow);
+}
+
+function writeAccountsToDom(service, accounts) {
+  const list = $(SERVICE_META[service].listId);
+  list.innerHTML = '';
+  for (const acc of accounts) {
+    const row = document.createElement('div');
+    row.className = 'account-row';
+    row.dataset.accountId = acc.id || makeAccountId(service);
+    row.innerHTML = `
+      <input class="account-name" type="text" placeholder="表示名" value="${escHtml(acc.name || '')}">
+      <input class="account-token" type="password" placeholder="eyJhbG... / sk-..." value="${escHtml(acc.token || '')}">
+      <button class="btn-mini btn-remove-account" type="button">削除</button>
+    `;
+    row.querySelector('.btn-remove-account').addEventListener('click', () => {
+      row.remove();
+      if (!list.querySelector('.account-row')) addAccountRow(service);
+      persistSetup();
+    });
+    row.querySelector('.account-name').addEventListener('input', persistSetup);
+    row.querySelector('.account-token').addEventListener('input', persistSetup);
+    list.appendChild(row);
+  }
+}
+
+function addAccountRow(service, account = null) {
+  const existing = readAccountsFromDom(service);
+  const next = account || defaultAccount(service, existing.length);
+  writeAccountsToDom(service, [...existing, next]);
+  persistSetup();
+}
+
+function collectAccounts() {
+  const collected = {};
+  for (const service of Object.keys(SERVICE_META)) {
+    const rows = readAccountsFromDom(service);
+    collected[service] = rows.map((acc, idx) => ({
+      id: acc.id || makeAccountId(service),
+      name: acc.name || `${SERVICE_META[service].label} ${idx + 1}`,
+      token: acc.token || '',
+    }));
+  }
+  return collected;
+}
+
+function persistSetup() {
+  try {
+    const accounts = collectAccounts();
+    sessionStorage.setItem('qm-accounts', JSON.stringify(accounts));
+    sessionStorage.setItem('qm-interval', String(Math.max(30, parseInt($('#poll-interval').value) || 120)));
+  } catch {}
+}
+
+// ═══════════════════════════════════════
+// API proxy base URL detection
+// ═══════════════════════════════════════
+function apiBase() {
+  // Works both in Vercel deployment and local dev
+  return window.location.origin;
+}
+
+// ═══════════════════════════════════════
+// Claude Code fetcher
+// ═══════════════════════════════════════
+async function fetchClaude(token) {
+  const resp = await fetch(`${apiBase()}/api/claude`, {
+    headers: { 'x-quota-token': token },
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+  return data;
+}
+
+function parseClaude(data) {
+  // Expected: { five_hour: { utilization, resets_at }, seven_day: {...}, seven_day_opus: {...} }
+  const windows = [];
+  const windowDefs = [
+    { key: 'five_hour', name: '5時間' },
+    { key: 'seven_day', name: '7日間' },
+    { key: 'seven_day_opus', name: '7日間 (Opus)' },
+  ];
+  for (const { key, name } of windowDefs) {
+    const w = data[key];
+    if (!w) continue;
+    const utilization = typeof w.utilization === 'number' ? w.utilization : 0;
+    windows.push({
+      name,
+      utilization,
+      resetsAt: w.resets_at || null,
+      status: classifyUtilization(utilization),
+    });
+  }
+  return windows;
+}
+
+// ═══════════════════════════════════════
+// Codex fetcher
+// ═══════════════════════════════════════
+async function fetchCodex(token) {
+  const resp = await fetch(`${apiBase()}/api/codex`, {
+    headers: { 'x-quota-token': token },
+  });
+
+  // Capture upstream headers for debugging
+  const upstreamHeaders = {};
+  for (const [k, v] of resp.headers.entries()) {
+    if (k.startsWith('x-upstream-')) upstreamHeaders[k] = v;
+  }
+
+  const text = await resp.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { _raw: text }; }
+  data._upstreamHeaders = upstreamHeaders;
+
+  if (!resp.ok) throw new Error(data.error || data.detail || `HTTP ${resp.status}`);
+  return data;
+}
+
+function parseCodex(data) {
+  const windows = [];
+  const toNumber = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const normalizeWindowName = (seconds, fallback) => {
+    if (fallback) return fallback;
+    const sec = toNumber(seconds);
+    if (sec === 18000) return '5時間';
+    if (sec === 604800) return '7日間';
+    if (sec === 86400) return '24時間';
+    if (!sec || sec <= 0) return 'ウィンドウ';
+    if (sec % 86400 === 0) return `${Math.round(sec / 86400)}日間`;
+    return `${Math.round(sec / 3600)}時間`;
+  };
+  const pushWindow = (windowData, label, parent) => {
+    if (!windowData || typeof windowData !== 'object') return;
+    const utilization =
+      toNumber(windowData.used_percent ?? windowData.usedPercent ?? windowData.utilization) ??
+      (() => {
+        const used = toNumber(windowData.used);
+        const limit = toNumber(windowData.limit);
+        if (used !== null && limit && limit > 0) return (used / limit) * 100;
+        return 0;
+      })();
+    const limitReached = windowData.limit_reached ?? windowData.limitReached ?? parent?.limit_reached ?? parent?.limitReached;
+    const allowed = windowData.allowed ?? parent?.allowed;
+    let status = classifyUtilization(utilization);
+    if (limitReached === true || allowed === false) status = 'exhausted';
+    windows.push({
+      name: normalizeWindowName(windowData.limit_window_seconds ?? windowData.limitWindowSeconds, label),
+      utilization,
+      resetsAt: windowData.reset_at ?? windowData.resetAt ?? windowData.resets_at ?? windowData.resetsAt ?? null,
+      status,
+    });
+  };
+  const parseWhamRateLimit = (block, prefix) => {
+    if (!block || typeof block !== 'object') return;
+    const primary = block.primary_window ?? block.primaryWindow ?? block.primary;
+    const secondary = block.secondary_window ?? block.secondaryWindow ?? block.secondary;
+    const primaryLabel = prefix ? `${prefix} (primary)` : null;
+    const secondaryLabel = prefix ? `${prefix} (secondary)` : null;
+    pushWindow(primary, primaryLabel, block);
+    pushWindow(secondary, secondaryLabel, block);
+  };
+
+  // Current wham/usage shape:
+  // {
+  //   rate_limit: { primary_window, secondary_window, allowed, limit_reached },
+  //   code_review_rate_limit: { primary_window, ... },
+  //   additional_rate_limits: [...]
+  // }
+  parseWhamRateLimit(data.rate_limit, null);
+  parseWhamRateLimit(data.code_review_rate_limit, 'Code Review');
+  if (Array.isArray(data.additional_rate_limits)) {
+    for (const [idx, block] of data.additional_rate_limits.entries()) {
+      parseWhamRateLimit(block, block?.name || `Additional ${idx + 1}`);
+    }
+  } else {
+    parseWhamRateLimit(data.additional_rate_limits, 'Additional');
+  }
+
+  // Backward-compatible fallback parsers
+  if (windows.length === 0) {
+    const rl = data.rate_limits || data.rateLimits || data;
+    if (rl.primary || rl.secondary) {
+      pushWindow(rl.primary, '5時間', rl);
+      pushWindow(rl.secondary, '7日間', rl);
+    }
+  }
+  if (windows.length === 0) {
+    const arr = data.windows || data.limits || data.rate_limits;
+    if (Array.isArray(arr)) {
+      for (const w of arr) {
+        pushWindow(w, w.name || w.label || w.window || null, null);
+      }
+    }
+  }
+  if (windows.length === 0) {
+    for (const [key, name] of [['five_hour', '5時間'], ['fiveHour', '5時間'], ['weekly', '7日間'], ['seven_day', '7日間']]) {
+      if (data[key] && typeof data[key] === 'object') {
+        pushWindow(data[key], name, data[key]);
+      }
+    }
+  }
+
+  if (windows.length === 0) {
+    windows.push({ name: '(不明な形式)', utilization: 0, resetsAt: null, status: 'unknown' });
+  }
+
+  return windows;
+}
+
+// ═══════════════════════════════════════
+// Poll orchestrator
+// ═══════════════════════════════════════
+async function pollAll() {
+  state.accounts = collectAccounts();
+  persistSetup();
+  let anySuccess = false;
+  const nextServices = {};
+  state.rawResponses = {};
+  const statusOrder = ['unknown', 'ok', 'warning', 'critical', 'exhausted'];
+  const worstOf = (windows) => windows.reduce((a, w) => (
+    statusOrder.indexOf(w.status) > statusOrder.indexOf(a) ? w.status : a
+  ), 'ok');
+
+  for (const acc of state.accounts.claude) {
+    if (!acc.token) continue;
+    const serviceKey = `claude:${acc.id}`;
+    const label = `${SERVICE_META.claude.label}: ${acc.name}`;
+    try {
+      const data = await fetchClaude(acc.token);
+      state.rawResponses[serviceKey] = data;
+      const windows = parseClaude(data);
+      const worstStatus = worstOf(windows);
+
+      const prev = state.services[serviceKey]?.status;
+      nextServices[serviceKey] = { label, windows, status: worstStatus };
+
+      if (prev && prev !== worstStatus) {
+        if (worstStatus === 'critical' || worstStatus === 'exhausted') {
+          notify(`${label} ⚠️`, `ステータス: ${worstStatus} — ${windows.map(w => `${w.name}: ${w.utilization}%`).join(', ')}`);
+          log(`${label} → ${worstStatus}`, 'crit');
+        } else if (worstStatus === 'ok' && (prev === 'critical' || prev === 'exhausted')) {
+          notify(`${label} ✅`, 'クォータが回復しました');
+          log(`${label} → ok (回復)`, 'ok');
+        }
+      }
+      anySuccess = true;
+      log(`${label} 取得成功: ${windows.map(w => `${w.name}=${w.utilization}%`).join(', ')}`);
+    } catch (e) {
+      nextServices[serviceKey] = { label, windows: [], status: 'error', error: e.message };
+      log(`${label} エラー: ${e.message}`, 'warn');
+    }
+  }
+
+  for (const acc of state.accounts.codex) {
+    if (!acc.token) continue;
+    const serviceKey = `codex:${acc.id}`;
+    const label = `${SERVICE_META.codex.label}: ${acc.name}`;
+    try {
+      const data = await fetchCodex(acc.token);
+      state.rawResponses[serviceKey] = data;
+      const windows = parseCodex(data);
+      const worstStatus = worstOf(windows);
+
+      const prev = state.services[serviceKey]?.status;
+      nextServices[serviceKey] = { label, windows, status: worstStatus };
+
+      if (prev && prev !== worstStatus) {
+        if (worstStatus === 'critical' || worstStatus === 'exhausted') {
+          notify(`${label} ⚠️`, `ステータス: ${worstStatus}`);
+          log(`${label} → ${worstStatus}`, 'crit');
+        } else if (worstStatus === 'ok' && (prev === 'critical' || prev === 'exhausted')) {
+          notify(`${label} ✅`, 'クォータが回復しました');
+          log(`${label} → ok (回復)`, 'ok');
+        }
+      }
+      anySuccess = true;
+      log(`${label} 取得成功: ${windows.map(w => `${w.name}=${w.utilization}%`).join(', ')}`);
+    } catch (e) {
+      nextServices[serviceKey] = { label, windows: [], status: 'error', error: e.message };
+      log(`${label} エラー: ${e.message}`, 'warn');
+    }
+  }
+
+  state.services = nextServices;
+
+  const allAccounts = [...state.accounts.claude, ...state.accounts.codex];
+  const withToken = allAccounts.filter(a => a.token);
+  if (withToken.length === 0) {
+    log('トークンが未設定', 'warn');
+  }
+
+  render();
+  return anySuccess;
+}
+
+// ═══════════════════════════════════════
+// Render
+// ═══════════════════════════════════════
+function render() {
+  const dash = $('#dashboard');
+  const entries = Object.entries(state.services);
+
+  if (entries.length === 0) {
+    dash.innerHTML = '<div class="empty">トークンを設定して「開始」を押してください</div>';
+    return;
+  }
+
+  dash.innerHTML = entries.map(([id, svc]) => {
+    if (svc.error && svc.windows.length === 0) {
+      return `<div class="card">
+        <div class="card-header">
+          <span class="card-label">${svc.label}</span>
+          <span class="card-status error">エラー</span>
+        </div>
+        <div style="font-size:.72rem;color:var(--crit)">${escHtml(svc.error)}</div>
+      </div>`;
+    }
+
+    const windowsHtml = svc.windows.map(w => `
+      <div class="window">
+        <div class="window-header">
+          <span>${w.name}</span>
+          <span>${w.utilization.toFixed(1)}% 使用</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill ${w.status}" style="width:${Math.min(w.utilization, 100)}%"></div>
+        </div>
+        ${w.resetsAt ? `<div class="window-footer">リセット: ${formatReset(w.resetsAt)}</div>` : ''}
+      </div>
+    `).join('');
+
+    return `<div class="card">
+      <div class="card-header">
+        <span class="card-label">${svc.label}</span>
+        <span class="card-status ${svc.status}">${svc.status}</span>
+      </div>
+      ${windowsHtml}
+    </div>`;
+  }).join('');
+
+  // Raw data
+  $('#raw-data').textContent = JSON.stringify(state.rawResponses, null, 2);
+}
+
+function renderLogs() {
+  const el = $('#log-list');
+  el.innerHTML = state.logs.slice(0, 50).map(l =>
+    `<div class="${l.level}">[${l.ts}] ${escHtml(l.msg)}</div>`
+  ).join('');
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+// ═══════════════════════════════════════
+// Controls
+// ═══════════════════════════════════════
+function startPolling() {
+  stopPolling();
+  const intervalSec = Math.max(30, parseInt($('#poll-interval').value) || 120);
+  state.polling = true;
+  $('#btn-start').textContent = '⏹ 停止';
+  $('#btn-start').classList.add('active');
+  updatePollStatus('ポーリング中...');
+  pollAll();
+  state.timer = setInterval(() => {
+    updatePollStatus('取得中...');
+    pollAll().then(() => updatePollStatus(`次回: ${intervalSec}秒後`));
+  }, intervalSec * 1000);
+  persistSetup();
+}
+
+function stopPolling() {
+  state.polling = false;
+  if (state.timer) { clearInterval(state.timer); state.timer = null; }
+  $('#btn-start').textContent = '▶ 開始';
+  $('#btn-start').classList.remove('active');
+  updatePollStatus('停止中');
+}
+
+function updatePollStatus(msg) {
+  $('#poll-status').textContent = msg;
+}
+
+// ═══════════════════════════════════════
+// Init
+// ═══════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Restore setup from sessionStorage
+  let restored = null;
+  try {
+    const raw = sessionStorage.getItem('qm-accounts');
+    restored = raw ? JSON.parse(raw) : null;
+    if (restored && typeof restored === 'object') {
+      state.accounts.claude = Array.isArray(restored.claude) ? restored.claude : [];
+      state.accounts.codex = Array.isArray(restored.codex) ? restored.codex : [];
+    } else {
+      // Backward compatibility with old single-token storage.
+      const legacyClaude = sessionStorage.getItem('qm-claude') || '';
+      const legacyCodex = sessionStorage.getItem('qm-codex') || '';
+      if (legacyClaude) state.accounts.claude = [{ ...defaultAccount('claude', 0), token: legacyClaude }];
+      if (legacyCodex) state.accounts.codex = [{ ...defaultAccount('codex', 0), token: legacyCodex }];
+    }
+    const iv = sessionStorage.getItem('qm-interval');
+    if (iv) $('#poll-interval').value = iv;
+  } catch {}
+  if (state.accounts.claude.length === 0) state.accounts.claude = [defaultAccount('claude', 0)];
+  if (state.accounts.codex.length === 0) state.accounts.codex = [defaultAccount('codex', 0)];
+  writeAccountsToDom('claude', state.accounts.claude);
+  writeAccountsToDom('codex', state.accounts.codex);
+
+  $('#btn-start').addEventListener('click', () => {
+    if (state.polling) stopPolling(); else startPolling();
+  });
+
+  $('#btn-poll').addEventListener('click', () => {
+    updatePollStatus('手動取得中...');
+    pollAll().then(() => updatePollStatus('取得完了'));
+  });
+
+  $('#btn-notify').addEventListener('click', async () => {
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      log('通知が許可されました', 'ok');
+      notify('テスト', 'AI Quota Monitor の通知が有効です');
+    } else {
+      log('通知が拒否されました', 'warn');
+    }
+  });
+  $(SERVICE_META.claude.addBtnId).addEventListener('click', () => addAccountRow('claude'));
+  $(SERVICE_META.codex.addBtnId).addEventListener('click', () => addAccountRow('codex'));
+  $('#poll-interval').addEventListener('change', persistSetup);
+  if (!restored) persistSetup();
+
+  render();
+  updatePollStatus('停止中');
+});
+</script>
+</body>
+</html>
