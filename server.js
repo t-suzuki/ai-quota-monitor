@@ -153,5 +153,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  process.stdout.write(`Dev server running at http://localhost:${PORT}\n`);
+  process.stdout.write(`http://localhost:${PORT}\n`);
 });

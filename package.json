@@ -1,13 +1,9 @@
 {
   "name": "quota-monitor",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
-  "packageManager": "npm@10.9.0",
-  "description": "AI coding tool quota monitor — stateless Vercel service",
+  "description": "AI coding tool quota monitor",
   "scripts": {
-    "build": "echo \"No build step required\"",
-    "dev": "node dev-server.js",
-    "dev:static": "npx serve public -l 4173",
-    "dev:vercel": "npx vercel dev --local-config vercel.json --listen 4173"
+    "start": "node server.js"
   }
 }
