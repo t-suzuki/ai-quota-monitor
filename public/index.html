@@ -8,7 +8,7 @@
 :root {
   --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
   --fg: #c9d1d9; --fg2: #8b949e; --fg3: #484f58;
-  --ok: #56d364; --warn: #e3b341; --crit: #ff7b72; --blue: #58a6ff;
+  --ok: #7ee787; --warn: #f0d050; --crit: #ffa198; --blue: #79c0ff;
   --radius: 8px; --font: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -47,6 +47,7 @@ h1 span { color: var(--ok); }
 .account-list { display: flex; flex-direction: column; gap: 8px; }
 .account-row { display: grid; grid-template-columns: 160px 1fr auto; gap: 8px; }
 .account-row input { width: 100%; }
+.account-token { -webkit-text-security: disc; text-security: disc; }
 .btn-mini { background: var(--bg2); border: 1px solid var(--bg3); color: var(--fg2); padding: 6px 10px;
   border-radius: 4px; cursor: pointer; font-family: var(--font); font-size: 0.7rem; }
 .btn-mini:hover { background: var(--bg3); color: var(--fg); }
@@ -66,12 +67,12 @@ h1 span { color: var(--ok); }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .card-label { font-size: 0.85rem; font-weight: 600; }
 .card-status { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; }
-.card-status.ok { background: rgba(86,211,100,.15); color: var(--ok); }
-.card-status.warning { background: rgba(227,179,65,.15); color: var(--warn); }
-.card-status.critical { background: rgba(255,123,114,.15); color: var(--crit); }
-.card-status.exhausted { background: rgba(255,123,114,.3); color: var(--crit); }
+.card-status.ok { background: rgba(126,231,135,.15); color: var(--ok); }
+.card-status.warning { background: rgba(240,208,80,.15); color: var(--warn); }
+.card-status.critical { background: rgba(255,161,152,.15); color: var(--crit); }
+.card-status.exhausted { background: rgba(255,161,152,.3); color: var(--crit); }
 .card-status.unknown { background: var(--bg3); color: var(--fg3); }
-.card-status.error { background: rgba(255,123,114,.1); color: var(--fg3); }
+.card-status.error { background: rgba(255,161,152,.1); color: var(--fg3); }
 
 /* Dashboard grid */
 #dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -332,7 +333,7 @@ function writeAccountsToDom(service, accounts) {
     row.dataset.accountId = acc.id || makeAccountId(service);
     row.innerHTML = `
       <input class="account-name" type="text" placeholder="表示名" value="${escHtml(acc.name || '')}">
-      <input class="account-token" type="password" placeholder="eyJhbG... / sk-..." value="${escHtml(acc.token || '')}">
+      <input class="account-token" type="text" placeholder="eyJhbG... / sk-..." value="${escHtml(acc.token || '')}">
       <button class="btn-mini btn-remove-account" type="button">削除</button>
     `;
     row.querySelector('.btn-remove-account').addEventListener('click', () => {
@@ -677,8 +678,8 @@ function recordHistory(key, utilization) {
 }
 
 const STATUS_RGB = {
-  ok: '86,211,100', warning: '227,179,65',
-  critical: '255,123,114', exhausted: '255,123,114',
+  ok: '126,231,135', warning: '240,208,80',
+  critical: '255,161,152', exhausted: '255,161,152',
 };
 
 function buildBarGradient(history, status) {
@@ -692,7 +693,7 @@ function buildBarGradient(history, status) {
     const segStart = i === 0 ? 0 : history[i - 1];
     const segEnd = history[i];
     if (segEnd <= segStart) continue;
-    const alpha = (0.25 + 0.75 * (i / Math.max(n - 1, 1))).toFixed(2);
+    const alpha = (0.6 + 0.4 * (i / Math.max(n - 1, 1))).toFixed(2);
     const pS = ((segStart / total) * 100).toFixed(1);
     const pE = ((segEnd / total) * 100).toFixed(1);
     stops.push(`rgba(${rgb},${alpha}) ${pS}%`, `rgba(${rgb},${alpha}) ${pE}%`);
