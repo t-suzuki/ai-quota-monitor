@@ -18,6 +18,7 @@
       queuePersistSetup,
       deleteAccount,
       oauthLogin,
+      oauthExchangeCode,
       log,
       makeId,
     } = deps;
@@ -118,15 +119,37 @@
           loginBtn.disabled = true;
           try {
             const result = await oauthLogin({ service, id: acc.id });
-            if (result.success) {
+            if (result.needsCode) {
+              // Claude two-step flow: prompt user for the code
+              statusEl.textContent = result.message;
+              statusEl.dataset.status = 'pending';
+              loginBtn.disabled = false;
+              const code = prompt('ブラウザに表示された認証コードを貼り付けてください:');
+              if (!code || !code.trim()) {
+                statusEl.textContent = 'キャンセルされました';
+                statusEl.dataset.status = 'error';
+                return;
+              }
+              loginBtn.disabled = true;
+              statusEl.textContent = 'コードを送信中...';
+              const exchangeResult = await oauthExchangeCode({ service, id: acc.id, code: code.trim() });
+              if (exchangeResult.success) {
+                statusEl.textContent = 'ログイン成功';
+                statusEl.dataset.status = 'ok';
+                row.dataset.hasToken = '1';
+                const tokenInput = row.querySelector('.account-token');
+                if (tokenInput) { tokenInput.value = savedTokenMask; row.dataset.tokenMasked = '1'; }
+                queuePersistSetup();
+              } else {
+                statusEl.textContent = exchangeResult.message || 'ログイン失敗';
+                statusEl.dataset.status = 'error';
+              }
+            } else if (result.success) {
               statusEl.textContent = 'ログイン成功';
               statusEl.dataset.status = 'ok';
               row.dataset.hasToken = '1';
               const tokenInput = row.querySelector('.account-token');
-              if (tokenInput) {
-                tokenInput.value = savedTokenMask;
-                row.dataset.tokenMasked = '1';
-              }
+              if (tokenInput) { tokenInput.value = savedTokenMask; row.dataset.tokenMasked = '1'; }
               queuePersistSetup();
             } else {
               statusEl.textContent = result.message || 'ログイン失敗';

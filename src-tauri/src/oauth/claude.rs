@@ -1,63 +1,51 @@
-use super::callback_server::{bind_callback_listener, wait_for_callback};
 use super::pkce;
 use super::OAuthTokens;
 use std::collections::HashMap;
 use std::time::Duration;
-use tokio::sync::oneshot;
 
 const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const AUTH_URL: &str = "https://claude.ai/oauth/authorize";
-const TOKEN_URL: &str = "https://console.anthropic.com/api/oauth/token";
-const SCOPE: &str = "user:inference user:profile";
+const TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
+const REDIRECT_URI: &str = "https://console.anthropic.com/oauth/code/callback";
+const SCOPE: &str = "org:create_api_key user:profile user:inference";
 
-/// Build the authorization URL and start the callback listener.
-/// Returns (auth_url, cancel_sender, token_future).
-pub async fn start_login() -> Result<(String, oneshot::Sender<()>, tokio::task::JoinHandle<Result<OAuthTokens, String>>), String> {
+/// Build the authorization URL for Claude OAuth.
+/// Claude uses a hosted redirect (console.anthropic.com), not a local callback server.
+/// The user will complete auth in the browser, then the callback page displays the code.
+/// We poll a clipboard / manual input approach — the callback page shows the code to the user.
+///
+/// Returns the auth URL. The callback page will show the authorization code.
+pub fn build_auth_url() -> (String, String, String) {
     let pkce = pkce::generate();
     let state = pkce::random_state();
 
-    let (listener, port) = bind_callback_listener()
-        .map_err(|e| format!("Failed to start callback server: {e}"))?;
-
-    let redirect_uri = format!("http://localhost:{port}/callback");
-
     let auth_url = format!(
         "{AUTH_URL}?response_type=code&client_id={CLIENT_ID}&redirect_uri={redirect}&scope={scope}&code_challenge={challenge}&code_challenge_method=S256&state={state}",
-        redirect = url_encode(&redirect_uri),
+        redirect = url_encode(REDIRECT_URI),
         scope = url_encode(SCOPE),
         challenge = pkce.challenge,
         state = state,
     );
 
-    let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-    let expected_state = state.clone();
-    let verifier = pkce.verifier.clone();
-
-    let handle = tokio::task::spawn_blocking(move || {
-        let callback = wait_for_callback(listener, cancel_rx)?;
-
-        if callback.state != expected_state {
-            return Err("OAuth state mismatch (possible CSRF)".into());
-        }
-
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| format!("Failed to create runtime: {e}"))?;
-
-        rt.block_on(exchange_code(&callback.code, &verifier, &redirect_uri))
-    });
-
-    Ok((auth_url, cancel_tx, handle))
+    (auth_url, pkce.verifier, state)
 }
 
-async fn exchange_code(code: &str, verifier: &str, redirect_uri: &str) -> Result<OAuthTokens, String> {
+/// Exchange the authorization code for tokens.
+/// Claude's callback page returns code#state — the caller should split on '#' if present.
+pub async fn exchange_code(raw_code: &str, verifier: &str) -> Result<OAuthTokens, String> {
+    // Claude returns code#state — extract just the code part
+    let code = if let Some(pos) = raw_code.find('#') {
+        &raw_code[..pos]
+    } else {
+        raw_code
+    };
+
     let mut params = HashMap::new();
     params.insert("grant_type", "authorization_code");
     params.insert("code", code);
     params.insert("code_verifier", verifier);
     params.insert("client_id", CLIENT_ID);
-    params.insert("redirect_uri", redirect_uri);
+    params.insert("redirect_uri", REDIRECT_URI);
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
@@ -85,11 +73,10 @@ async fn exchange_code(code: &str, verifier: &str, redirect_uri: &str) -> Result
 }
 
 pub async fn refresh_token(refresh_tok: &str) -> Result<OAuthTokens, String> {
-    let body = serde_json::json!({
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_tok,
-        "client_id": CLIENT_ID,
-    });
+    let mut params = HashMap::new();
+    params.insert("grant_type", "refresh_token");
+    params.insert("refresh_token", refresh_tok);
+    params.insert("client_id", CLIENT_ID);
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
@@ -98,7 +85,7 @@ pub async fn refresh_token(refresh_tok: &str) -> Result<OAuthTokens, String> {
 
     let resp = client
         .post(TOKEN_URL)
-        .json(&body)
+        .form(&params)
         .send()
         .await
         .map_err(|e| format!("Token refresh request failed: {e}"))?;
