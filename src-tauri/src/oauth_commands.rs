@@ -31,9 +31,15 @@ pub struct OAuthLoginResult {
     pub message: String,
     pub has_token: bool,
     pub expires_at: Option<i64>,
+    /// Authorization URL to open in a browser (preferred: user copies into their browser of choice).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_url: Option<String>,
     /// For Claude two-step flow: signals the frontend to show a code input dialog.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub needs_code: Option<bool>,
+    /// For async flows (Codex): login has started and we're waiting for callback.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -73,18 +79,14 @@ fn oauth_login_claude() -> AppResult<OAuthLoginResult> {
         *lock = Some((verifier, state));
     }
 
-    if let Err(e) = open::that(&auth_url) {
-        return Err(AppError::Message(format!(
-            "ブラウザを開けませんでした: {e}\nこのURLを手動で開いてください: {auth_url}"
-        )));
-    }
-
     Ok(OAuthLoginResult {
         success: false,
-        message: "ブラウザで認証してください。`code` 文字列またはリダイレクト先URL全体をペーストしてください。".into(),
+        message: "ログインURLをブラウザで開いて認証してください。表示された `code#state`（またはリダイレクト先URL全体）を貼り付けてください。".into(),
         has_token: false,
         expires_at: None,
+        auth_url: Some(auth_url),
         needs_code: Some(true),
+        pending: Some(true),
     })
 }
 
@@ -133,7 +135,9 @@ pub fn import_claude_cli_credentials(service: &str, id: &str) -> AppResult<OAuth
         message: "Claude CLIの認証情報を取り込みました".into(),
         has_token: true,
         expires_at,
+        auth_url: None,
         needs_code: None,
+        pending: None,
     })
 }
 
@@ -149,42 +153,38 @@ async fn oauth_login_codex(id: &str) -> AppResult<OAuthLoginResult> {
         *lock = Some(cancel_tx);
     }
 
-    if let Err(e) = open::that(&auth_url) {
-        return Err(AppError::Message(format!(
-            "ブラウザを開けませんでした: {e}\nこのURLを手動で開いてください: {auth_url}"
-        )));
-    }
+    // Run the callback wait + token exchange in the background so we can return the URL immediately.
+    let id_owned = id.to_string();
+    let id_for_task = id_owned.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = handle
+            .await
+            .map_err(|e| format!("Login task failed: {e}"))
+            .and_then(|x| x);
 
-    let result = handle
-        .await
-        .map_err(|e| AppError::Message(format!("Login task failed: {e}")))?;
-
-    {
-        let mut lock = cancel_store()
-            .lock()
-            .map_err(|_| AppError::Message("Lock poisoned".into()))?;
-        *lock = None;
-    }
-
-    match result {
-        Ok(mut tokens) => {
-            store_tokens("codex", id, &mut tokens)?;
-            Ok(OAuthLoginResult {
-                success: true,
-                message: "ログイン成功".into(),
-                has_token: true,
-                expires_at: tokens.expires_at,
-                needs_code: None,
-            })
+        if let Ok(mut lock) = cancel_store().lock() {
+            *lock = None;
         }
-        Err(e) => Ok(OAuthLoginResult {
-            success: false,
-            message: e,
-            has_token: token_store::get_token("codex", id).is_some(),
-            expires_at: token_store::get_expires_at("codex", id),
-            needs_code: None,
-        }),
-    }
+
+        match result {
+            Ok(mut tokens) => {
+                let _ = store_tokens("codex", &id_for_task, &mut tokens);
+            }
+            Err(_) => {
+                // Frontend polls token status; errors will show as timeout unless we add a status API.
+            }
+        }
+    });
+
+    Ok(OAuthLoginResult {
+        success: false,
+        message: "ログインURLをブラウザで開いて認証してください（完了を待っています）".into(),
+        has_token: token_store::get_token("codex", &id_owned).is_some(),
+        expires_at: token_store::get_expires_at("codex", &id_owned),
+        auth_url: Some(auth_url),
+        needs_code: None,
+        pending: Some(true),
+    })
 }
 
 /// Second step for Claude OAuth: exchange the authorization code.
@@ -220,7 +220,9 @@ pub async fn oauth_exchange_code(
                 message: "ログイン成功".into(),
                 has_token: true,
                 expires_at: tokens.expires_at,
+                auth_url: None,
                 needs_code: None,
+                pending: None,
             })
         }
         Err(e) => Ok(OAuthLoginResult {
@@ -228,7 +230,9 @@ pub async fn oauth_exchange_code(
             message: e,
             has_token: token_store::get_token(service, id).is_some(),
             expires_at: token_store::get_expires_at(service, id),
+            auth_url: None,
             needs_code: None,
+            pending: None,
         }),
     }
 }
@@ -284,14 +288,18 @@ pub async fn refresh_account_token(service: &str, id: &str) -> AppResult<OAuthLo
             message: "トークンを更新しました".into(),
             has_token: true,
             expires_at: token_store::get_expires_at(service, id),
+            auth_url: None,
             needs_code: None,
+            pending: None,
         }),
         Err(e) => Ok(OAuthLoginResult {
             success: false,
             message: e,
             has_token: token_store::get_token(service, id).is_some(),
             expires_at: token_store::get_expires_at(service, id),
+            auth_url: None,
             needs_code: None,
+            pending: None,
         }),
     }
 }

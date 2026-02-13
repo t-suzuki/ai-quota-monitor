@@ -89,7 +89,7 @@
         row.innerHTML = `
           <input class="account-name" type="text" maxlength="256" placeholder="表示名" value="${escHtml(acc.name || '')}">
           <input class="account-token" type="password" maxlength="16384" autocomplete="off" placeholder="eyJhbG... / sk-..." value="${escHtml(tokenView.tokenValue)}">
-          <button class="btn-mini btn-oauth-login" type="button" title="OAuth ログイン">🔐 ログイン</button>
+          <button class="btn-mini btn-oauth-login" type="button" title="ログインURLをコピー">🔗 URLコピー</button>
           ${canImportClaudeCli ? '<button class="btn-mini btn-cli-import" type="button" title="Claude CLI から取り込み">📥 CLI取込</button>' : ''}
           <button class="btn-mini btn-remove-account" type="button">削除</button>
           <span class="oauth-status" data-status=""></span>
@@ -118,12 +118,30 @@
           const statusEl = row.querySelector('.oauth-status');
           const loginBtn = row.querySelector('.btn-oauth-login');
           const importBtn = row.querySelector('.btn-cli-import');
-          statusEl.textContent = 'ブラウザを開いています...';
+          statusEl.textContent = 'ログインURLを発行中...';
           statusEl.dataset.status = 'pending';
           loginBtn.disabled = true;
           if (importBtn) importBtn.disabled = true;
           try {
             const result = await oauthLogin({ service, id: acc.id });
+            const authUrl = result && typeof result.authUrl === 'string' ? result.authUrl : '';
+            if (authUrl) {
+              let copied = false;
+              try {
+                if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                  await navigator.clipboard.writeText(authUrl);
+                  copied = true;
+                }
+              } catch {}
+              if (!copied) {
+                // Fallback: user can manually copy from the prompt
+                try { prompt('このURLをコピーしてブラウザで開いてください:', authUrl); } catch {}
+              }
+              statusEl.textContent = copied
+                ? 'ログインURLをコピーしました。ブラウザで開いて認証してください。'
+                : 'ログインURLを表示しました。ブラウザで開いて認証してください。';
+              statusEl.dataset.status = 'pending';
+            }
             if (result.needsCode) {
               // Claude two-step flow: prompt user for the code
               statusEl.textContent = result.message;
@@ -156,6 +174,30 @@
               const tokenInput = row.querySelector('.account-token');
               if (tokenInput) { tokenInput.value = savedTokenMask; row.dataset.tokenMasked = '1'; }
               queuePersistSetup();
+            } else if (result.pending) {
+              // Codex async flow: backend is waiting for localhost callback.
+              statusEl.textContent = 'ブラウザで認証中...（完了を待っています）';
+              statusEl.dataset.status = 'pending';
+
+              const timeoutMs = 5 * 60 * 1000;
+              const start = Date.now();
+              while (Date.now() - start < timeoutMs) {
+                await new Promise((r) => setTimeout(r, 1000));
+                const st = await window.quotaApi.getTokenStatus({ service, id: acc.id });
+                if (st && st.hasToken) {
+                  statusEl.textContent = 'ログイン成功';
+                  statusEl.dataset.status = 'ok';
+                  row.dataset.hasToken = '1';
+                  const tokenInput = row.querySelector('.account-token');
+                  if (tokenInput) { tokenInput.value = savedTokenMask; row.dataset.tokenMasked = '1'; }
+                  queuePersistSetup();
+                  break;
+                }
+              }
+              if (statusEl.dataset.status === 'pending') {
+                statusEl.textContent = 'ログイン待機がタイムアウトしました（再度URLコピーしてやり直してください）';
+                statusEl.dataset.status = 'error';
+              }
             } else {
               statusEl.textContent = result.message || 'ログイン失敗';
               statusEl.dataset.status = 'error';
