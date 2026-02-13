@@ -355,7 +355,7 @@ font-src 'self' data:;
 - [x] **`usage-clients.js` ネットワークエラー未キャッチ**  
   fetch/text 読み出し失敗を明示的に補足し、文脈付きエラーに変換。
 
-未対応（中以上、継続）:
+未対応（中以上、継続 / 1回目時点）:
 - [ ] **S-3 API エンドポイントのハードニング（証明書ピンニング等）**
 - [ ] **S-5 CSP `unsafe-inline` 除去**
 - [ ] **S-6 Tauri ケーパビリティ最小化**
@@ -374,6 +374,38 @@ font-src 'self' data:;
 検証状況:
 - [ ] **自動テスト実行**  
   この実行環境には `npm` と `cargo` が存在せず、`npm test` / `cargo test` は実行不可（`command not found`）。
+
+### 2026-02-13 3回目更新
+
+追加対応:
+- [x] **S-5 CSP `style-src 'unsafe-inline'`**  
+  `public/index.html` のインライン `<style>` を `public/styles.css` へ分離し、CSP を `style-src 'self'` に変更。  
+  あわせて HTML/JS 内のインライン `style` 属性を除去（バー幅は CSS ユーティリティクラス化）。
+- [x] **CSP 強化（低の副次対応）**  
+  `form-action 'none'`, `base-uri 'self'`, `frame-ancestors 'none'` を `index.html` と `tauri.conf.json` に追加。
+- [x] **S-3 API エンドポイントハードニング（部分対応）**  
+  Rust/JS 双方で上流 URL の `https` と allowlist ホスト検証を追加。  
+  さらに Rust 側 HTTP クライアントでリダイレクト追従を無効化し、トークンの他ホスト送出を抑止。
+
+S-3 の残課題:
+- [ ] 証明書ピンニング（採用しない方針）
+
+### 2026-02-13 4回目更新
+
+方針決定:
+- [x] **S-3 証明書ピンニングは採用しない**  
+  運用・更新コストと誤検知リスクを踏まえ、URL allowlist + HTTPS 強制 + リダイレクト無効化の現行対策を維持。
+
+追加対応:
+- [x] **S-6 Tauri ケーパビリティ最小化**  
+  `src-tauri/capabilities/default.json` の `core:default` を廃止し、`core:app:default` / `core:event:default` / `core:webview:default` / `core:window:default` に分割。
+- [x] **ストアの毎回ディスク I/O（中）**  
+  `src-tauri/src/main.rs` に `STORE_CACHE` を導入。`read_store` でメモリキャッシュ優先、`write_store` でファイル書き込み後にキャッシュ同期。
+- [x] **`main.rs` 分割着手（中）**  
+  バリデーション/レート制限を `src-tauri/src/validation.rs` へ、利用率パーサを `src-tauri/src/usage_parser.rs` へ移動。
+
+未対応（中以上、継続）:
+- [ ] **`main.rs` のモジュール分割 / 型付きエラー化**
 
 ---
 

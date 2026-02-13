@@ -310,33 +310,15 @@ function recordHistory(key, utilization) {
   if (arr.length > 10) arr.shift();
 }
 
-const STATUS_RGB = {
-  ok: '126,231,135', warning: '240,208,80',
-  critical: '255,161,152', exhausted: '255,161,152',
-};
-
-function buildBarGradient(history, status) {
-  const rgb = STATUS_RGB[status] || STATUS_RGB.ok;
-  if (!history || history.length <= 1) return '';
-  const total = history[history.length - 1];
-  if (total <= 0) return '';
-  const stops = [];
-  const n = history.length;
-  for (let i = 0; i < n; i++) {
-    const segStart = i === 0 ? 0 : history[i - 1];
-    const segEnd = history[i];
-    if (segEnd <= segStart) continue;
-    const alpha = (0.6 + 0.4 * (i / Math.max(n - 1, 1))).toFixed(2);
-    const pS = ((segStart / total) * 100).toFixed(1);
-    const pE = ((segEnd / total) * 100).toFixed(1);
-    stops.push(`rgba(${rgb},${alpha}) ${pS}%`, `rgba(${rgb},${alpha}) ${pE}%`);
-  }
-  if (stops.length === 0) return '';
-  return `background:linear-gradient(to right,${stops.join(',')})`;
-}
-
 function calcElapsedPct(resetsAt, windowSeconds) {
   return calcElapsedPctValue(resetsAt, windowSeconds, Date.now());
+}
+
+function toWidthClass(pct) {
+  const value = Number(pct);
+  const normalized = Number.isFinite(value) ? value : 0;
+  const clamped = Math.max(0, Math.min(100, Math.round(normalized)));
+  return `w-${clamped}`;
 }
 
 // ═══════════════════════════════════════
@@ -400,20 +382,16 @@ function render() {
           <span class="card-header-left">${logoHtml}<span class="card-label">${svc.label}</span></span>
           <span class="card-status error">エラー</span>
         </div>
-        <div style="font-size:.72rem;color:var(--crit)">${escHtml(svc.error)}</div>
+        <div class="card-error-message">${escHtml(svc.error)}</div>
       </div>`;
     }
 
     const windowsHtml = svc.windows.map(w => {
-      const histKey = `${id}:${w.name}`;
-      const hist = state.history[histKey] || [];
-      const grad = buildBarGradient(hist, w.status);
-      const barStyle = grad ? `${grad};width:${Math.min(w.utilization, 100)}%`
-                            : `width:${Math.min(w.utilization, 100)}%`;
+      const usageWidthClass = toWidthClass(w.utilization);
       const elPct = calcElapsedPct(w.resetsAt, w.windowSeconds);
       const elStr = elPct !== null ? ` / 経過 ${elPct.toFixed(0)}%` : '';
       const elBar = elPct !== null
-        ? `<div class="bar-track bar-track-elapsed"><div class="bar-fill elapsed" style="width:${Math.min(elPct, 100)}%"></div></div>`
+        ? `<div class="bar-track bar-track-elapsed"><div class="bar-fill elapsed ${toWidthClass(elPct)}"></div></div>`
         : '';
       return `<div class="window">
         <div class="window-header">
@@ -421,7 +399,7 @@ function render() {
           <span>使用 ${w.utilization.toFixed(1)}%${elStr}</span>
         </div>
         <div class="bar-track">
-          <div class="bar-fill ${w.status}" style="${barStyle}"></div>
+          <div class="bar-fill ${w.status} ${usageWidthClass}"></div>
         </div>
         ${elBar}
         ${w.resetsAt ? `<div class="reset-info">リセット: ${formatReset(w.resetsAt)}</div>` : ''}

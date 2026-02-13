@@ -1,8 +1,25 @@
 const ANTHROPIC_OAUTH_BETA = 'oauth-2025-04-20';
+const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
+const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
 
 function assertToken(token) {
   if (!token || typeof token !== 'string' || !token.trim()) {
     throw new Error('Token is required');
+  }
+}
+
+function assertUpstreamUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('Invalid upstream URL');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Upstream URL must use https');
+  }
+  if (parsed.hostname !== 'api.anthropic.com' && parsed.hostname !== 'chatgpt.com') {
+    throw new Error('Upstream host is not allowlisted');
   }
 }
 
@@ -26,6 +43,7 @@ function createUsageClient(deps = {}) {
   const fetchImpl = deps.fetchImpl || fetch;
 
   async function fetchUsageRaw(url, headers) {
+    assertUpstreamUrl(url);
     let upstream;
     try {
       upstream = await fetchImpl(url, { headers });
@@ -50,7 +68,7 @@ function createUsageClient(deps = {}) {
 
   async function fetchClaudeUsageRaw(token) {
     assertToken(token);
-    return fetchUsageRaw('https://api.anthropic.com/api/oauth/usage', {
+    return fetchUsageRaw(CLAUDE_USAGE_URL, {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
       'anthropic-beta': ANTHROPIC_OAUTH_BETA,
@@ -59,7 +77,7 @@ function createUsageClient(deps = {}) {
 
   async function fetchCodexUsageRaw(token) {
     assertToken(token);
-    return fetchUsageRaw('https://chatgpt.com/backend-api/wham/usage', {
+    return fetchUsageRaw(CODEX_USAGE_URL, {
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
     });
@@ -76,6 +94,8 @@ const { fetchUsageRaw, fetchClaudeUsageRaw, fetchCodexUsageRaw } = createUsageCl
 
 module.exports = {
   ANTHROPIC_OAUTH_BETA,
+  CLAUDE_USAGE_URL,
+  CODEX_USAGE_URL,
   createUsageClient,
   safeJsonParse,
   fetchUsageRaw,

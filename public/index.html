@@ -3,153 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self' data:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self' data:; form-action 'none'; base-uri 'self'; frame-ancestors 'none';">
 <title>AI Quota Monitor</title>
-<style>
-:root {
-  --bg: #0d1117; --bg2: #1c2128; --bg3: #2d333b;
-  --fg: #c9d1d9; --fg2: #8b949e; --fg3: #484f58;
-  --ok: #7ee787; --warn: #f0d050; --crit: #ffa198; --blue: #79c0ff;
-  --radius: 8px; --font: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-  --minimal-card-width: 290px;
-}
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: var(--font); background: var(--bg); color: var(--fg); min-height: 100vh; }
-.container { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
-h1 { font-size: 1.1rem; color: var(--fg2); margin-bottom: 16px; }
-h1 span { color: var(--ok); }
-.app-version { font-size: 0.62rem; color: var(--fg3); font-weight: 500; margin-left: 6px; vertical-align: middle; }
-.subtitle { font-size: 0.75rem; color: var(--fg3); margin-top: 24px; margin-bottom: 0; }
-
-/* Setup section */
-.setup { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
-.setup summary { cursor: pointer; font-size: 0.85rem; color: var(--blue); user-select: none; }
-.setup summary:hover { text-decoration: underline; }
-.setup[open] summary { margin-bottom: 12px; }
-.field { margin-bottom: 12px; }
-.field label { display: block; font-size: 0.75rem; color: var(--fg2); margin-bottom: 4px; }
-.field .row { display: flex; gap: 8px; }
-.field input { flex: 1; background: var(--bg); border: 1px solid var(--bg3); color: var(--fg); padding: 8px 10px;
-  border-radius: 4px; font-family: var(--font); font-size: 0.8rem; outline: none; }
-.field input:focus { border-color: var(--blue); }
-.field input::placeholder { color: var(--fg3); }
-.check-label { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--fg); cursor: pointer; }
-.check-label input[type="checkbox"] { accent-color: var(--blue); cursor: pointer; }
-.threshold-row .row { align-items: center; }
-.threshold-label { font-size: 0.72rem; color: var(--fg2); white-space: nowrap; }
-.threshold-fixed { color: var(--fg3); }
-.help { font-size: 0.7rem; color: var(--fg3); margin-top: 8px; line-height: 1.6; }
-.help-title { font-size: 0.72rem; color: var(--fg2); margin-bottom: 6px; }
-.cmd-list { display: flex; flex-direction: column; gap: 6px; }
-.cmd-item { display: flex; align-items: stretch; background: var(--bg); border: 1px solid var(--bg3); border-radius: 4px; overflow: hidden; }
-.cmd-os { flex-shrink: 0; width: 70px; display: flex; align-items: center; justify-content: center;
-  background: var(--bg3); font-size: 0.65rem; color: var(--fg2); font-weight: 600; text-align: center; padding: 6px 4px; }
-.cmd-code { flex: 1; padding: 8px 10px; font-size: 0.67rem; color: var(--fg);
-  font-family: var(--font); line-height: 1.4; background: transparent; border: none; outline: none; min-width: 0; }
-.cmd-copy { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 40px;
-  background: transparent; border: none; border-left: 1px solid var(--bg3); color: var(--fg3);
-  cursor: pointer; font-size: 0.75rem; transition: background .15s, color .15s; }
-.cmd-copy:hover { background: var(--bg3); color: var(--fg); }
-.cmd-copy.copied { color: var(--ok); }
-.account-group { margin-bottom: 14px; }
-.account-list { display: flex; flex-direction: column; gap: 8px; }
-.account-row { display: grid; grid-template-columns: 160px 1fr auto; gap: 8px; }
-.account-row input { width: 100%; }
-.account-token { -webkit-text-security: disc; text-security: disc; }
-.btn-mini { background: var(--bg2); border: 1px solid var(--bg3); color: var(--fg2); padding: 6px 10px;
-  border-radius: 4px; cursor: pointer; font-family: var(--font); font-size: 0.7rem; }
-.btn-mini:hover { background: var(--bg3); color: var(--fg); }
-.btn-add { margin-top: 8px; }
-
-/* Controls */
-.controls { display: flex; gap: 8px; align-items: center; margin: 16px 0; flex-wrap: wrap; }
-.controls button { background: var(--bg2); border: 1px solid var(--bg3); color: var(--fg); padding: 6px 14px;
-  border-radius: 4px; cursor: pointer; font-family: var(--font); font-size: 0.75rem; transition: background .15s; }
-.controls button:hover { background: var(--bg3); }
-.controls button.active { border-color: var(--ok); color: var(--ok); }
-.controls .spacer { flex: 1; }
-.controls .status { font-size: 0.7rem; color: var(--fg3); }
-
-/* Service cards */
-.card { background: var(--bg2); border: 1px solid var(--bg3); border-left: 2px solid var(--fg3); border-radius: var(--radius); padding: 16px; }
-.card-ok { border-left-color: var(--ok); }
-.card-warning { border-left-color: var(--warn); }
-.card-critical, .card-exhausted { border-left-color: var(--crit); }
-.card-unknown, .card-error { border-left-color: var(--fg3); }
-.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.card-label { font-size: 0.85rem; font-weight: 600; }
-.card-status { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; }
-.card-status.ok { background: rgba(126,231,135,.15); color: var(--ok); }
-.card-status.warning { background: rgba(240,208,80,.15); color: var(--warn); }
-.card-status.critical { background: rgba(255,161,152,.15); color: var(--crit); }
-.card-status.exhausted { background: rgba(255,161,152,.3); color: var(--crit); }
-.card-status.unknown { background: var(--bg3); color: var(--fg3); }
-.card-status.error { background: rgba(255,161,152,.1); color: var(--fg3); }
-
-/* Dashboard grid */
-#dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.card-header-left { display: flex; align-items: center; gap: 8px; }
-.card-logo { flex-shrink: 0; width: 20px; height: 20px; color: var(--fg); display: flex; align-items: center; }
-.card-logo svg { width: 20px; height: 20px; }
-
-.window { margin-bottom: 10px; }
-.window:last-child { margin-bottom: 0; }
-.window-header { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--fg2); margin-bottom: 4px; }
-.bar-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
-.bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease, background .3s; }
-.bar-fill.ok { background: var(--ok); }
-.bar-fill.warning { background: var(--warn); }
-.bar-fill.critical { background: var(--crit); }
-.bar-fill.exhausted { background: var(--crit); }
-/* Elapsed time bar */
-.bar-track-elapsed { height: 4px; margin-top: 2px; }
-.bar-fill.elapsed { background: var(--blue); opacity: 0.45; }
-.reset-info { font-size: 0.78rem; color: var(--blue); margin-top: 4px; text-align: right; font-weight: 500; }
-/* Polling countdown ring */
-.poll-ring-wrap { display: flex; align-items: center; }
-.poll-ring-wrap svg { display: block; }
-
-/* Empty state */
-.empty { text-align: center; padding: 48px 16px; color: var(--fg3); font-size: 0.8rem; line-height: 1.8; }
-
-/* Log */
-.log-section { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 16px; margin-top: 16px; }
-.log-section summary { cursor: pointer; font-size: 0.85rem; color: var(--blue); user-select: none; }
-.log-section summary:hover { text-decoration: underline; }
-.log-section[open] summary { margin-bottom: 12px; }
-.log-list { max-height: 200px; overflow-y: auto; font-size: 0.65rem; color: var(--fg3); line-height: 1.8; }
-.log-list .warn { color: var(--warn); }
-.log-list .crit { color: var(--crit); }
-.log-list .ok { color: var(--ok); }
-
-/* Raw response viewer */
-.raw { background: var(--bg2); border: 1px solid var(--bg3); border-radius: var(--radius); padding: 16px; margin-top: 16px; }
-.raw summary { cursor: pointer; font-size: 0.85rem; color: var(--blue); user-select: none; }
-.raw summary:hover { text-decoration: underline; }
-.raw[open] summary { margin-bottom: 12px; }
-.raw pre { background: var(--bg); border: 1px solid var(--bg3); border-radius: 4px; padding: 12px;
-  font-size: 0.65rem; overflow-x: auto; max-height: 300px; overflow-y: auto; color: var(--fg2); }
-
-/* Minimal mode (cards only) */
-body.minimal-mode .container { max-width: none; padding: 8px; }
-body.minimal-mode h1,
-body.minimal-mode .controls,
-body.minimal-mode .setup,
-body.minimal-mode .raw,
-body.minimal-mode .log-section,
-body.minimal-mode .subtitle { display: none !important; }
-body.minimal-mode #dashboard { grid-template-columns: repeat(auto-fill, minmax(var(--minimal-card-width), 1fr)); gap: 8px; align-content: start; }
-body.minimal-mode .card { padding: 10px; }
-body.minimal-mode .empty { padding: 24px 10px; }
-
-@media (max-width: 480px) {
-  .container { padding: 16px 10px; }
-  #dashboard { grid-template-columns: 1fr; }
-  .card { padding: 12px; }
-  .account-row { grid-template-columns: 1fr; }
-  .btn-remove-account { width: 100%; }
-}
-</style>
+<link rel="stylesheet" href="./styles.css">
 </head>
 <body>
 <div class="container">
@@ -226,7 +82,7 @@ body.minimal-mode .empty { padding: 24px 10px; }
     <div class="field">
       <label>ポーリング間隔 (秒)</label>
       <div class="row">
-        <input type="number" id="poll-interval" value="120" min="30" max="600" style="max-width:100px">
+        <input class="input-max-100" type="number" id="poll-interval" value="120" min="30" max="600">
       </div>
     </div>
   </details>
@@ -247,9 +103,9 @@ body.minimal-mode .empty { padding: 24px 10px; }
       <label>閾値 (%)</label>
       <div class="row">
         <span class="threshold-label">Warning</span>
-        <input type="number" id="threshold-warning" value="75" min="1" max="99" style="max-width:70px">
+        <input class="input-max-70" type="number" id="threshold-warning" value="75" min="1" max="99">
         <span class="threshold-label">Critical</span>
-        <input type="number" id="threshold-critical" value="90" min="1" max="99" style="max-width:70px">
+        <input class="input-max-70" type="number" id="threshold-critical" value="90" min="1" max="99">
         <span class="threshold-label threshold-fixed">Exhausted = 100%</span>
       </div>
     </div>

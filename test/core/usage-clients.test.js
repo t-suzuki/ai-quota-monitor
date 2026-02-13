@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 
 const {
   ANTHROPIC_OAUTH_BETA,
+  CLAUDE_USAGE_URL,
+  CODEX_USAGE_URL,
   createUsageClient,
   safeJsonParse,
 } = require('../../src/core/usage-clients');
@@ -44,7 +46,7 @@ test('fetchClaudeUsageRaw calls anthropic endpoint with expected headers', async
 
   const result = await client.fetchClaudeUsageRaw('abc123');
 
-  assert.equal(calledUrl, 'https://api.anthropic.com/api/oauth/usage');
+  assert.equal(calledUrl, CLAUDE_USAGE_URL);
   assert.equal(calledHeaders.Authorization, 'Bearer abc123');
   assert.equal(calledHeaders.Accept, 'application/json');
   assert.equal(calledHeaders['anthropic-beta'], ANTHROPIC_OAUTH_BETA);
@@ -74,7 +76,7 @@ test('fetchCodexUsageRaw calls codex endpoint with expected headers', async () =
 
   const result = await client.fetchCodexUsageRaw('xyz789');
 
-  assert.equal(calledUrl, 'https://chatgpt.com/backend-api/wham/usage');
+  assert.equal(calledUrl, CODEX_USAGE_URL);
   assert.equal(calledHeaders.Authorization, 'Bearer xyz789');
   assert.equal(calledHeaders.Accept, 'application/json');
   assert.equal(result.ok, false);
@@ -105,5 +107,25 @@ test('fetchUsageRaw surfaces network errors with context', async () => {
   await assert.rejects(
     () => client.fetchClaudeUsageRaw('abc123'),
     /Network request failed: socket hang up/
+  );
+});
+
+test('fetchUsageRaw blocks non-allowlisted upstream URLs', async () => {
+  const client = createUsageClient({
+    fetchImpl: async () => makeResponse({
+      ok: true,
+      status: 200,
+      contentType: 'application/json',
+      body: '{}',
+    }),
+  });
+
+  await assert.rejects(
+    () => client.fetchUsageRaw('https://example.com/usage', {}),
+    /Upstream host is not allowlisted/
+  );
+  await assert.rejects(
+    () => client.fetchUsageRaw('http://api.anthropic.com/api/oauth/usage', {}),
+    /Upstream URL must use https/
   );
 });
