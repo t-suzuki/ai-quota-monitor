@@ -444,6 +444,44 @@ S-3 の残課題:
 - [ ] **`main.rs` のモジュール分割（store/commands の更なる分離）**
 - [ ] **型付きエラーの全体展開（store/window/command 入出力まで）**
 
+### 2026-02-13 8回目更新
+
+追加対応:
+- [x] **`main.rs` 分割を追加で実施（store 層）**  
+  ストア正規化・永続化・キャッシュを `src-tauri/src/store_repo.rs` に移動。
+- [x] **`window_ops` の依存先を分離後構成へ調整**  
+  既定サイズ/境界サニタイズの参照を `store_repo` 経由へ統一。
+- [x] **`main.rs` をさらに縮小**  
+  `main.rs` を約 1036 行 → 約 725 行まで削減。
+
+未対応（中以上、継続）:
+- [ ] **`main.rs` のモジュール分割（commands の更なる分離）**
+- [ ] **型付きエラーの全体展開（store/window/command 入出力まで）**
+
+### 2026-02-13 9回目更新
+
+追加対応:
+- [x] **`main.rs` 分割を追加で実施（commands 層その1）**  
+  アカウント系コマンドを `src-tauri/src/account_commands.rs`、設定系コマンドを `src-tauri/src/settings_commands.rs` へ移動。
+- [x] **`main.rs` をさらに縮小**  
+  `main.rs` を約 725 行 → 約 589 行まで削減。
+
+未対応（中以上、継続）:
+- [ ] **`main.rs` のモジュール分割（window/settings 以外の command 整理・最終整理）**
+- [ ] **型付きエラーの全体展開（store/window/command 入出力まで）**
+
+### 2026-02-13 10回目更新
+
+追加対応:
+- [x] **`main.rs` 分割を追加で実施（commands 層その2）**  
+  ウィンドウ系コマンドを `src-tauri/src/window_commands.rs`、利用率取得コマンドを `src-tauri/src/usage_commands.rs` へ移動。
+- [x] **`main.rs` をさらに縮小**  
+  `main.rs` を約 589 行 → 約 427 行まで削減。
+
+未対応（中以上、継続）:
+- [ ] **`main.rs` のモジュール分割（最終整理: コマンド集約構成の整理）**
+- [ ] **型付きエラーの全体展開（store/window/command 入出力まで）**
+
 ---
 
 *以上*

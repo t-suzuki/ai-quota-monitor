@@ -1,0 +1,70 @@
+use crate::store_repo::{read_store, write_store};
+use tauri::AppHandle;
+
+pub fn get_settings(app: AppHandle) -> Result<crate::Settings, String> {
+    Ok(read_store(&app)?.settings)
+}
+
+pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> Result<crate::Settings, String> {
+    let mut store = read_store(&app)?;
+
+    if let Some(poll_interval) = payload.poll_interval {
+        if (30..=600).contains(&poll_interval) {
+            store.settings.poll_interval = poll_interval;
+            if !store.settings.polling_state.active {
+                store.settings.polling_state.interval = poll_interval;
+            }
+        }
+    }
+
+    if let Some(ns) = payload.notify_settings {
+        let current = &mut store.settings.notify_settings;
+        if let Some(v) = ns.critical {
+            current.critical = v;
+        }
+        if let Some(v) = ns.recovery {
+            current.recovery = v;
+        }
+        if let Some(v) = ns.warning {
+            current.warning = v;
+        }
+        if let Some(v) = ns.threshold_warning {
+            if (1..=99).contains(&v) {
+                current.threshold_warning = v;
+            }
+        }
+        if let Some(v) = ns.threshold_critical {
+            if (1..=99).contains(&v) {
+                current.threshold_critical = v;
+            }
+        }
+    }
+
+    write_store(&app, &store)?;
+    Ok(store.settings)
+}
+
+pub fn get_polling_state(app: AppHandle) -> Result<crate::PollingState, String> {
+    Ok(read_store(&app)?.settings.polling_state)
+}
+
+pub fn set_polling_state(
+    app: AppHandle,
+    payload: crate::SetPollingStatePayload,
+) -> Result<crate::PollingState, String> {
+    let mut store = read_store(&app)?;
+    let current = &mut store.settings.polling_state;
+
+    current.active = payload.active.unwrap_or(false);
+    current.started_at = payload.started_at.filter(|n| *n > 0);
+
+    if let Some(interval) = payload.interval {
+        if (30..=600).contains(&interval) {
+            current.interval = interval;
+        }
+    }
+
+    let out = current.clone();
+    write_store(&app, &store)?;
+    Ok(out)
+}
