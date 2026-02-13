@@ -1,6 +1,6 @@
 {
   "name": "ai-quota-monitor",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "AI quota monitor",
   "engines": {
@@ -10,7 +10,8 @@
     "start": "tauri dev",
     "start:tauri": "tauri dev",
     "test": "node --test \"test/**/*.test.js\"",
-    "build:tauri": "tauri build"
+    "build:tauri": "tauri build",
+    "build:zip": "npm run build:tauri && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-zip.ps1"
   },
   "dependencies": {},
   "devDependencies": {

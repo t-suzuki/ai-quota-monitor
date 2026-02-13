@@ -30,7 +30,7 @@ dependencies = [
 
 [[package]]
 name = "ai-quota-monitor"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "keyring",
  "reqwest 0.12.28",

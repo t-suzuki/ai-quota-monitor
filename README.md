@@ -67,6 +67,14 @@ npm run build:tauri
 
 Windows では `src-tauri/target/release/bundle/` に NSIS / MSI インストーラが出力される。
 
+Zip 配布物も作る場合:
+
+```bash
+npm run build:zip
+```
+
+`src-tauri/target/release/bundle/zip/AI-Quota-Monitor-<version>-windows-x64.zip` が出力される。
+
 ## トークン取得方法
 
 ### Claude Code

@@ -1,6 +1,6 @@
 [package]
 name = "ai-quota-monitor"
-version = "0.0.1"
+version = "0.0.2"
 description = "AI quota monitor"
 authors = ["Takahiro SUZUKI"]
 edition = "2021"
