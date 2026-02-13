@@ -602,18 +602,24 @@ fn delete_token(service: &str, id: &str) -> Result<(), String> {
 }
 
 fn current_window_bounds(window: &WebviewWindow) -> Result<Bounds, String> {
+    let scale_factor = window
+        .scale_factor()
+        .map_err(|e| format!("Failed to read window scale factor: {e}"))?;
+
     let size = window
-        .outer_size()
+        .inner_size()
         .map_err(|e| format!("Failed to read window size: {e}"))?;
+    let logical_size = size.to_logical::<f64>(scale_factor);
     let mut bounds = Bounds {
-        width: i32::try_from(size.width).unwrap_or(NORMAL_WINDOW_DEFAULT_W),
-        height: i32::try_from(size.height).unwrap_or(NORMAL_WINDOW_DEFAULT_H),
+        width: logical_size.width.round() as i32,
+        height: logical_size.height.round() as i32,
         x: None,
         y: None,
     };
     if let Ok(pos) = window.outer_position() {
-        bounds.x = Some(pos.x);
-        bounds.y = Some(pos.y);
+        let logical_pos = pos.to_logical::<f64>(scale_factor);
+        bounds.x = Some(logical_pos.x.round() as i32);
+        bounds.y = Some(logical_pos.y.round() as i32);
     }
     Ok(bounds)
 }
