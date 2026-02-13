@@ -132,3 +132,16 @@ pub fn get_token_status(payload: crate::OAuthLoginPayload) -> Result<TokenStatus
     let id = crate::sanitize_string(payload.id.as_deref(), "");
     oauth_commands::get_token_status(&service, &id).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn oauth_exchange_code(payload: crate::OAuthExchangeCodePayload) -> Result<OAuthLoginResult, String> {
+    let service = crate::sanitize_string(payload.service.as_deref(), "");
+    let id = crate::sanitize_string(payload.id.as_deref(), "");
+    let code = payload.code.as_deref().unwrap_or("").trim().to_string();
+    if code.is_empty() {
+        return Err("Authorization code is required".into());
+    }
+    oauth_commands::oauth_exchange_code(&service, &id, &code)
+        .await
+        .map_err(|e| e.to_string())
+}

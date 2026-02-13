@@ -272,6 +272,14 @@ struct OAuthLoginPayload {
     id: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OAuthExchangeCodePayload {
+    service: Option<String>,
+    id: Option<String>,
+    code: Option<String>,
+}
+
 fn sanitize_string(input: Option<&str>, fallback: &str) -> String {
     let v = input.unwrap_or("").trim();
     if v.is_empty() {
@@ -314,6 +322,7 @@ fn main() {
             commands::cancel_oauth_login,
             commands::refresh_token,
             commands::get_token_status,
+            commands::oauth_exchange_code,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

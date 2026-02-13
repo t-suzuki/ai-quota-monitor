@@ -1,29 +1,33 @@
-use super::callback_server::{bind_callback_listener, wait_for_callback};
+use super::callback_server::wait_for_callback;
 use super::pkce;
 use super::OAuthTokens;
 use std::collections::HashMap;
+use std::net::TcpListener;
 use std::time::Duration;
 use tokio::sync::oneshot;
 
 const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
-const AUTH_URL: &str = "https://auth.openai.com/oauth/authorize";
+const AUTH_URL: &str = "https://auth.openai.com/authorize";
 const TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const SCOPE: &str = "openid profile email offline_access";
+const REDIRECT_PORT: u16 = 1455;
+const REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
 
 /// Build the authorization URL and start the callback listener.
+/// Codex uses a fixed port 1455 with path /auth/callback.
 /// Returns (auth_url, cancel_sender, token_future).
 pub async fn start_login() -> Result<(String, oneshot::Sender<()>, tokio::task::JoinHandle<Result<OAuthTokens, String>>), String> {
     let pkce = pkce::generate();
     let state = pkce::random_state();
 
-    let (listener, port) = bind_callback_listener()
-        .map_err(|e| format!("Failed to start callback server: {e}"))?;
-
-    let redirect_uri = format!("http://localhost:{port}/callback");
+    let listener = TcpListener::bind(format!("127.0.0.1:{REDIRECT_PORT}"))
+        .map_err(|e| format!("Failed to bind port {REDIRECT_PORT} (is Codex CLI running?): {e}"))?;
+    listener.set_nonblocking(true)
+        .map_err(|e| format!("Failed to set non-blocking: {e}"))?;
 
     let auth_url = format!(
-        "{AUTH_URL}?response_type=code&client_id={CLIENT_ID}&redirect_uri={redirect}&scope={scope}&code_challenge={challenge}&code_challenge_method=S256&state={state}",
-        redirect = url_encode(&redirect_uri),
+        "{AUTH_URL}?response_type=code&client_id={CLIENT_ID}&redirect_uri={redirect}&scope={scope}&code_challenge={challenge}&code_challenge_method=S256&state={state}&codex_cli_simplified_flow=true",
+        redirect = url_encode(REDIRECT_URI),
         scope = url_encode(SCOPE),
         challenge = pkce.challenge,
         state = state,
@@ -40,26 +44,24 @@ pub async fn start_login() -> Result<(String, oneshot::Sender<()>, tokio::task::
             return Err("OAuth state mismatch (possible CSRF)".into());
         }
 
-        // We need to block on the async token exchange from within spawn_blocking.
-        // Use a new tokio runtime for this isolated HTTP call.
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .map_err(|e| format!("Failed to create runtime: {e}"))?;
 
-        rt.block_on(exchange_code(&callback.code, &verifier, &redirect_uri))
+        rt.block_on(exchange_code(&callback.code, &verifier))
     });
 
     Ok((auth_url, cancel_tx, handle))
 }
 
-async fn exchange_code(code: &str, verifier: &str, redirect_uri: &str) -> Result<OAuthTokens, String> {
+async fn exchange_code(code: &str, verifier: &str) -> Result<OAuthTokens, String> {
     let mut params = HashMap::new();
     params.insert("grant_type", "authorization_code");
     params.insert("code", code);
     params.insert("code_verifier", verifier);
     params.insert("client_id", CLIENT_ID);
-    params.insert("redirect_uri", redirect_uri);
+    params.insert("redirect_uri", REDIRECT_URI);
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))

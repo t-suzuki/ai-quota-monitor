@@ -27,5 +27,6 @@
     cancelOauthLogin: () => call('cancel_oauth_login'),
     refreshToken: (payload) => call('refresh_token', { payload }),
     getTokenStatus: (payload) => call('get_token_status', { payload }),
+    oauthExchangeCode: (payload) => call('oauth_exchange_code', { payload }),
   };
 }(typeof window !== 'undefined' ? window : globalThis));
