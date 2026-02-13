@@ -25,6 +25,7 @@ const ERROR_HTML: &str = r#"<!DOCTYPE html>
 <body><div class="box"><div class="err">&#10007;</div><p>認証に失敗しました。アプリに戻ってやり直してください。</p></div></body></html>"#;
 
 /// Bind a local TCP listener on a free port and return (listener, port).
+#[cfg(test)]
 pub fn bind_callback_listener() -> std::io::Result<(TcpListener, u16)> {
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let port = listener.local_addr()?.port();

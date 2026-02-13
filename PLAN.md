@@ -2,12 +2,11 @@
 
 ## 現状の問題
 
-現在のアプリは CLI (Claude Code / Codex) が管理するトークンを**ユーザーが手動コピー&ペースト**して利用している。
+元々は CLI (Claude Code / Codex) が管理するトークンを**ユーザーが手動コピー&ペースト**して利用していたが、
+現在はアプリ内で OAuth ログインでき、`refresh_token` / 有効期限が取れている場合は期限前に自動更新できる。
 
 - `~/.claude/.credentials.json` や `~/.codex/auth.json` からユーザーが手動でトークンを取得
-- アプリ内でのトークン更新(refresh)機能が一切ない
-- トークン有効期限の追跡もない
-- HTTP 401 が返ってもユーザーに再入力を促すだけ
+- 手動トークン貼り付けは引き続き可能（ただしこの場合は有効期限/refresh 情報が無いので自動更新できない）
 
 ## 調査結果サマリ
 
@@ -16,18 +15,17 @@
 | 項目 | 値 |
 |------|-----|
 | Client ID | `9d1c250a-e61b-44d9-88ed-5944d1962f5e` |
-| Authorization | `https://claude.ai/oauth/authorize` |
-| Token | `https://console.anthropic.com/api/oauth/token` |
+| Authorization | `https://claude.ai/oauth/authorize` (`code=true`) |
+| Token | `https://platform.claude.com/v1/oauth/token` |
 | PKCE | S256 |
-| Redirect | `http://localhost:54545/callback` |
+| Redirect | `https://platform.claude.com/oauth/code/callback` |
 | Access Token 寿命 | 8時間 (28800秒) |
 | Access Token prefix | `sk-ant-oat01-` |
 | Refresh Token prefix | `sk-ant-ort01-` |
-| Scope | `user:inference user:profile` |
+| Scope | `org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers` |
 
-**重要制約**: 2026年1月以降、Anthropic はサードパーティアプリの OAuth 利用をホワイトリスト制で制限している。
-Claude Code の client_id を使った authorize リクエストは、ホワイトリスト外のアプリからは
-"Unauthorized - This service has not been whitelisted" で拒否される可能性が高い。
+補足:
+- Claude の認可後に表示されるコードが `code#state` 形式になるため、アプリ側は `state` を含めて token exchange を行う必要がある。
 
 ### Codex の OAuth
 
@@ -37,9 +35,9 @@ Claude Code の client_id を使った authorize リクエストは、ホワイ�
 | Authorization | `https://auth.openai.com/oauth/authorize` |
 | Token | `https://auth.openai.com/oauth/token` |
 | PKCE | S256 |
-| Redirect | `http://localhost:1455/auth/callback` (ポートは可変) |
+| Redirect | `http://localhost:1455/auth/callback` (固定) |
 | Refresh Token | Single-use rotation 方式 |
-| Device Code | `https://auth.openai.com/codex/device` (RFC 8628) |
+| Extra query | `id_token_add_organizations=true`, `codex_cli_simplified_flow=true`, `originator=codex_cli_rs` |
 
 **重要制約**: Refresh Token Rotation が適用されるため、
 リフレッシュトークンを使うと即座に無効化され新しいペアが発行される。
@@ -74,8 +72,8 @@ CLI と同じリフレッシュトークンを使うと、CLI 側のトークン
 
 3つの認証方式を段階的に実装する:
 
-1. **CLI連携モード** (Phase 1) — CLI の認証情報ファイルを自動読み取り・監視
-2. **独立OAuth ログイン** (Phase 2) — アプリ内でブラウザ認証フローを実行
+1. **CLI 取り込み** (Phase 1) — CLI が管理する認証情報を手動取り込み（現状: Claude のみ）
+2. **OAuth ログイン** (Phase 2) — アプリ内でブラウザ認証フローを実行
 3. **自動トークンリフレッシュ** (Phase 3) — refresh_token による自動更新
 
 ---
@@ -83,55 +81,24 @@ CLI と同じリフレッシュトークンを使うと、CLI 側のトークン
 ## Phase 1: CLI 連携モード (credential file auto-import)
 
 ### 概要
-CLI が管理する認証情報ファイルを自動的に読み取り、ファイル変更を監視して
-トークンが更新されたら自動で反映する。手動コピペを完全に不要にする。
+CLI が管理する認証情報を取り込む方式。現在は **Claude のみ** `~/.claude/.credentials.json` から手動取り込みを提供している。
+ファイルウォッチによる自動同期は将来拡張の余地あり。
 
 ### 実装内容
 
-#### 1.1 認証情報ファイルリーダー (`src-tauri/src/credential_reader.rs`)
+#### 1.1 Tauri コマンド（実装済み）
 
-- `~/.claude/.credentials.json` のパース (Linux/macOS)
-- macOS の場合は `security find-generic-password` 経由の Keychain 読み取りも対応
-- `~/.codex/auth.json` のパース
-- macOS の場合は Keychain ("Codex Auth") からの読み取りも対応
-- `CLAUDE_CONFIG_DIR` 環境変数によるカスタムパス対応
-- パース結果を `CredentialSet` 構造体で返す:
-  ```rust
-  struct CredentialSet {
-      access_token: String,
-      refresh_token: Option<String>,
-      expires_at: Option<i64>,  // epoch millis
-  }
-  ```
-
-#### 1.2 ファイルウォッチャー (`src-tauri/src/credential_watcher.rs`)
-
-- `notify` クレート (v6) でファイル変更を監視
-- 変更検知時に認証情報を再読み取り
-- 読み取ったトークンを keyring に自動保存
-- フロントエンドにイベント通知 (`credential-updated`)
-- デバウンス処理 (500ms) で連続変更に対応
-
-#### 1.3 Tauri コマンド追加
-
-- `import_cli_credentials(service)` — CLI 認証情報を手動インポート
-- `start_credential_watch(service)` — ファイル監視開始
-- `stop_credential_watch(service)` — ファイル監視停止
-- `get_credential_status(service)` — CLI認証情報の状態取得 (有無, 有効期限)
+- `import_claude_cli_credentials(service, id)` — `~/.claude/.credentials.json` を読み取り、トークンを保存
 
 #### 1.4 UI 変更
 
-- アカウント行に「CLIからインポート」ボタン追加
-- CLI 認証情報の状態表示 (検出済み / 未検出 / 期限切れ)
-- 「自動同期」トグル (ファイルウォッチャーの ON/OFF)
-- トークン有効期限の表示
+- Claude アカウント行に `📥 CLI取込` ボタン追加（`~/.claude/.credentials.json`）
+- OAuth ログインの結果/エラーの表示
 
 #### 1.5 バックエンド変更
 
-- `validation.rs`: `auth.openai.com` と `console.anthropic.com` を allowlist に追加
-- `token_store.rs`: refresh_token の保存対応 (別キー `{service}:{id}:refresh`)
-- `token_store.rs`: expires_at の保存対応 (別キー `{service}:{id}:expires`)
-- `Cargo.toml`: `notify = "6"`, `dirs = "5"` 追加
+- `validation.rs`: `auth.openai.com` を allowlist に追加
+- `token_store.rs`: `refresh_token` / `expires_at` の保存対応
 
 ---
 
@@ -144,25 +111,16 @@ CLI が管理する認証情報ファイルを自動的に読み取り、ファ�
 ### 2.1 Codex OAuth (実現可能性: 高)
 
 - PKCE (S256) で `code_verifier` / `code_challenge` を生成
-- ローカル HTTP サーバー (ポート動的割当) を起動してコールバック受信
-- ブラウザを開いて `https://auth.openai.com/oauth/authorize` へリダイレクト
+- ローカル HTTP コールバック (`http://localhost:1455/auth/callback`) を待ち受け
+- ブラウザを開いて `https://auth.openai.com/oauth/authorize` へリダイレクト（追加クエリあり）
 - コールバックで authorization code を受取り、token endpoint で交換
 - access_token + refresh_token を keyring に保存
-- **Device Code Flow** もサポート (headless 環境向け)
 
 実装:
 - `src-tauri/src/oauth/mod.rs` — OAuth モジュール
 - `src-tauri/src/oauth/pkce.rs` — PKCE 生成
 - `src-tauri/src/oauth/callback_server.rs` — ローカルHTTPサーバー
 - `src-tauri/src/oauth/codex.rs` — Codex 固有のフロー
-- `src-tauri/src/oauth/device_code.rs` — Device Code Flow
-
-追加依存:
-- `sha2` — PKCE のSHA-256計算
-- `base64` — base64url エンコード
-- `rand` — ランダム生成
-- `tokio` — 非同期ランタイム (既にreqwest経由で入っている可能性)
-- `axum` or `tiny_http` — ローカルコールバックサーバー
 
 #### 2.2 Claude OAuth (実現可能性: 中〜低)
 
@@ -171,7 +129,6 @@ CLI が管理する認証情報ファイルを自動的に読み取り、ファ�
 
 対応方針:
 - まず実装して実際に試す
-- ブロックされた場合は Phase 1 の CLI 連携モードをデフォルトに
 - `claude.ai/oauth/authorize` のコールバックフォーマットが特殊 (`code#state`) なので注意
 - 将来 Anthropic が OAuth App 登録を公開した場合に独自 client_id に切替可能な設計にする
 
@@ -193,19 +150,9 @@ CLI が管理する認証情報ファイルを自動的に読み取り、ファ�
 ### 3.1 リフレッシュエンジン (`src-tauri/src/token_refresh.rs`)
 
 - アクセストークンの有効期限を監視
-- 期限の5分前にリフレッシュを実行
-- Claude: `POST https://console.anthropic.com/api/oauth/token`
-  ```
-  grant_type=refresh_token
-  refresh_token=sk-ant-ort01-...
-  client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e
-  ```
+- 期限の5分前にリフレッシュを実行（フロントエンドが `get_token_status` を見て発火）
+- Claude: `POST https://platform.claude.com/v1/oauth/token` (JSON)
 - Codex: `POST https://auth.openai.com/oauth/token`
-  ```
-  grant_type=refresh_token
-  refresh_token=<stored_refresh_token>
-  client_id=app_EMoamEEZ73f0CkXaXp7hrann
-  ```
 - 新しいトークンペアを keyring に保存
 - フロントエンドに通知
 
@@ -213,21 +160,17 @@ CLI が管理する認証情報ファイルを自動的に読み取り、ファ�
 
 - 401 応答 → ユーザーに再ログインを促す
 - ネットワークエラー → exponential backoff でリトライ (最大3回)
-- CLI 連携モード有効時 → CLI の認証情報ファイルから再読み取り
 - すべて失敗 → UI にエラー表示、手動対応を促す
 
 ### 3.3 Polling 時の自動リフレッシュ統合
 
-- `fetch_normalized_usage()` が 401 を返した場合:
-  1. refresh_token が保存されていれば自動リフレッシュ試行
-  2. 成功したら新トークンでリトライ
-  3. 失敗したら CLI 認証情報ファイルから読み取り試行
-  4. それでも失敗したらエラー表示
+- ポーリング前に `get_token_status` を確認し、期限が近く `refresh_token` がある場合は `refresh_token` を実行する。
+- 現状は 401 検知後の自動リトライは未対応（必要なら今後追加する）。
 
 ### 3.4 注意事項
 
-- **CLI 連携モードの場合**: refresh_token は使わない (CLI のトークンを無効化してしまう)。
-  代わりにファイルウォッチャーで CLI の更新を検知する。
+- **CLI 由来の認証情報**: refresh_token rotation のあるサービス（例: Codex）では、CLI と同じ refresh_token を使うと CLI 側のトークンが無効化される可能性がある。
+  推奨はアプリ内 `🔐 ログイン` で独立トークンを取得すること。
 - **OAuth ログインモードの場合**: 独自に取得した refresh_token を使って自動更新。
   CLI とは独立したセッションなので干渉しない。
 
@@ -238,26 +181,22 @@ CLI が管理する認証情報ファイルを自動的に読み取り、ファ�
 ### 新規ファイル (Rust)
 | ファイル | 説明 |
 |---------|------|
-| `src-tauri/src/credential_reader.rs` | CLI 認証情報ファイル読み取り |
-| `src-tauri/src/credential_watcher.rs` | ファイル変更監視 |
 | `src-tauri/src/token_refresh.rs` | 自動トークンリフレッシュ |
 | `src-tauri/src/oauth/mod.rs` | OAuth モジュールルート |
 | `src-tauri/src/oauth/pkce.rs` | PKCE 生成 |
 | `src-tauri/src/oauth/callback_server.rs` | ローカルHTTPサーバー |
 | `src-tauri/src/oauth/codex.rs` | Codex OAuth フロー |
 | `src-tauri/src/oauth/claude.rs` | Claude OAuth フロー |
-| `src-tauri/src/oauth/device_code.rs` | Device Code Flow |
 
 ### 既存ファイル変更
 | ファイル | 変更内容 |
 |---------|---------|
-| `Cargo.toml` | 依存追加: notify, dirs, sha2, base64, rand, tiny_http |
-| `src-tauri/src/main.rs` | 新モジュール宣言, 新コマンド登録, setup でウォッチャー起動 |
+| `Cargo.toml` | 依存追加: sha2, base64, rand, tokio, open |
+| `src-tauri/src/main.rs` | OAuth/リフレッシュ関連のコマンド登録、定数整理 |
 | `src-tauri/src/token_store.rs` | refresh_token / expires_at の保存・取得 |
 | `src-tauri/src/validation.rs` | OAuth エンドポイントを allowlist 追加 |
-| `src-tauri/src/api_client.rs` | 401 時のリフレッシュ統合 |
 | `src-tauri/src/commands.rs` | 新コマンドハンドラー追加 |
-| `src-tauri/src/account_commands.rs` | CLI インポート連携 |
+| `src-tauri/src/oauth_commands.rs` | OAuth ログイン, Claude CLI 取り込み, トークン状態取得 |
 | `src-tauri/tauri.conf.json` | shell-open permission (ブラウザ起動) |
 | `public/index.html` | ログインボタン, ステータス表示追加 |
 | `public/app.js` | ログインフロー, 自動同期 UI, 期限表示 |
@@ -266,24 +205,8 @@ CLI が管理する認証情報ファイルを自動的に読み取り、ファ�
 
 ---
 
-## 実装優先順位
+## 今後の課題
 
-**Phase 1 (CLI連携)** が最も低リスク・高効果。CLIがインストール済みの全ユーザーに
-即座に恩恵がある。ここを最優先で実装する。
-
-Phase 2 (OAuth) は Codex 側から着手し、成功したら Claude 側を試す。
-サードパーティ制限でブロックされる可能性があるため、Phase 1 が必ず動く設計にする。
-
-Phase 3 (自動リフレッシュ) は Phase 2 で独自トークンを取得した場合にのみ
-有効。Phase 1 (CLI連携) では CLI 側のリフレッシュに任せる。
-
----
-
-## 今回の実装スコープ
-
-このPRでは **Phase 1 (CLI連携モード)** を実装する。
-
-1. CLI 認証情報ファイルの自動読み取り
-2. ファイル監視による自動更新
-3. UI: インポートボタン、自動同期、期限表示
-4. 401 エラー時の CLI 認証情報再読み取り
+1. 401 検知後の `refresh_token` 自動リトライ（サービスごとに安全性を評価）
+2. Codex の CLI 取り込み（実装するなら refresh_token rotation に注意）
+3. Claude のログイン UX 改善（`prompt()` ではなくUIダイアログ化）

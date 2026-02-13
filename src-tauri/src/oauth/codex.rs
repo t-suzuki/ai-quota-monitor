@@ -7,11 +7,12 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 
 const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
-const AUTH_URL: &str = "https://auth.openai.com/authorize";
+const AUTH_URL: &str = "https://auth.openai.com/oauth/authorize";
 const TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 const SCOPE: &str = "openid profile email offline_access";
 const REDIRECT_PORT: u16 = 1455;
 const REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
+const ORIGINATOR: &str = "codex_cli_rs";
 
 /// Build the authorization URL and start the callback listener.
 /// Codex uses a fixed port 1455 with path /auth/callback.
@@ -25,13 +26,7 @@ pub async fn start_login() -> Result<(String, oneshot::Sender<()>, tokio::task::
     listener.set_nonblocking(true)
         .map_err(|e| format!("Failed to set non-blocking: {e}"))?;
 
-    let auth_url = format!(
-        "{AUTH_URL}?response_type=code&client_id={CLIENT_ID}&redirect_uri={redirect}&scope={scope}&code_challenge={challenge}&code_challenge_method=S256&state={state}&codex_cli_simplified_flow=true",
-        redirect = url_encode(REDIRECT_URI),
-        scope = url_encode(SCOPE),
-        challenge = pkce.challenge,
-        state = state,
-    );
+    let auth_url = build_auth_url(&pkce.challenge, &state);
 
     let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
     let expected_state = state.clone();
@@ -166,3 +161,37 @@ fn url_encode(s: &str) -> String {
 }
 
 const HEX_UPPER: &[u8; 16] = b"0123456789ABCDEF";
+
+fn build_auth_url(code_challenge: &str, state: &str) -> String {
+    format!(
+        "{AUTH_URL}?response_type=code&client_id={CLIENT_ID}&redirect_uri={redirect}&scope={scope}&code_challenge={challenge}&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true&state={state}&originator={ORIGINATOR}",
+        redirect = url_encode(REDIRECT_URI),
+        scope = url_encode(SCOPE),
+        challenge = code_challenge,
+        state = state,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_auth_url, url_encode, AUTH_URL, CLIENT_ID, ORIGINATOR, REDIRECT_URI, SCOPE};
+
+    #[test]
+    fn build_auth_url_matches_codex_cli_shape() {
+        let auth_url = build_auth_url("challenge123", "state456");
+        assert!(auth_url.starts_with(AUTH_URL));
+        assert!(auth_url.contains("response_type=code"));
+        assert!(auth_url.contains(&format!("client_id={CLIENT_ID}")));
+        assert!(auth_url.contains(&format!(
+            "redirect_uri={}",
+            url_encode(REDIRECT_URI)
+        )));
+        assert!(auth_url.contains(&format!("scope={}", url_encode(SCOPE))));
+        assert!(auth_url.contains("code_challenge=challenge123"));
+        assert!(auth_url.contains("code_challenge_method=S256"));
+        assert!(auth_url.contains("id_token_add_organizations=true"));
+        assert!(auth_url.contains("codex_cli_simplified_flow=true"));
+        assert!(auth_url.contains("state=state456"));
+        assert!(auth_url.contains(&format!("originator={ORIGINATOR}")));
+    }
+}

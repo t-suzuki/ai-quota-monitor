@@ -167,10 +167,6 @@ fn encode_scope_query_value(scope: &str) -> String {
 
 const HEX_UPPER: &[u8; 16] = b"0123456789ABCDEF";
 
-fn extract_code(raw: &str) -> Option<String> {
-    extract_code_and_state(raw).map(|(code, _state)| code)
-}
-
 fn extract_code_and_state(raw: &str) -> Option<(String, Option<String>)> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -261,30 +257,42 @@ fn hex_val(b: u8) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_auth_url, encode_scope_query_value, extract_code, extract_code_and_state,
+        build_auth_url, encode_scope_query_value, extract_code_and_state,
         url_encode, AUTH_URL, CLIENT_ID, REDIRECT_URI, SCOPE,
     };
 
     #[test]
     fn extract_plain_code() {
-        assert_eq!(extract_code("abc123").as_deref(), Some("abc123"));
+        assert_eq!(
+            extract_code_and_state("abc123"),
+            Some(("abc123".to_string(), None))
+        );
     }
 
     #[test]
     fn extract_code_state_fragment_style() {
-        assert_eq!(extract_code("abc123#statexyz").as_deref(), Some("abc123"));
+        assert_eq!(
+            extract_code_and_state("abc123#statexyz"),
+            Some(("abc123".to_string(), Some("statexyz".to_string())))
+        );
     }
 
     #[test]
     fn extract_from_callback_query() {
         let input = "https://platform.claude.com/oauth/code/callback?code=abc123&state=xyz789";
-        assert_eq!(extract_code(input).as_deref(), Some("abc123"));
+        assert_eq!(
+            extract_code_and_state(input),
+            Some(("abc123".to_string(), Some("xyz789".to_string())))
+        );
     }
 
     #[test]
     fn extract_from_fragment_query() {
         let input = "https://example.com/#code=abc123&state=xyz789";
-        assert_eq!(extract_code(input).as_deref(), Some("abc123"));
+        assert_eq!(
+            extract_code_and_state(input),
+            Some(("abc123".to_string(), Some("xyz789".to_string())))
+        );
     }
 
     #[test]

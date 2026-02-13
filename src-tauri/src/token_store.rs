@@ -186,10 +186,6 @@ pub fn set_refresh_token(service: &str, id: &str, token: &str) -> AppResult<()> 
         .map_err(|e| AppError::Keyring(format!("Failed to store refresh token: {e}")))
 }
 
-pub fn delete_refresh_token(service: &str, id: &str) -> AppResult<()> {
-    delete_key(&refresh_token_key(service, id))
-}
-
 pub fn get_expires_at(service: &str, id: &str) -> Option<i64> {
     let key = expires_at_key(service, id);
     let entry = keyring::Entry::new(crate::APP_NAME, &key).ok()?;
