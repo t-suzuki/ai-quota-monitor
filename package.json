@@ -6,47 +6,15 @@
   "engines": {
     "node": ">=22.12.0"
   },
-  "main": "electron/main.js",
   "scripts": {
-    "start": "electron .",
-    "start:electron": "electron .",
+    "start": "tauri dev",
+    "start:tauri": "tauri dev",
     "test": "node --test \"test/**/*.test.js\"",
-    "dist:win": "electron-builder --win nsis zip"
+    "build:tauri": "tauri build"
   },
-  "dependencies": {
-    "keytar": "^7.9.0"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "electron": "^36.3.2",
-    "electron-builder": "^26.7.0"
+    "@tauri-apps/cli": "^2.0.0"
   },
-  "author": "Takahiro SUZUKI",
-  "build": {
-    "appId": "com.suzuki.takahiro.quota-monitor",
-    "productName": "AI Quota Monitor",
-    "files": [
-      "electron/**/*",
-      "public/**/*",
-      "src/**/*",
-      "package.json",
-      "README.md"
-    ],
-    "asar": true,
-    "npmRebuild": false,
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "allowElevation": true,
-      "perMachine": false,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ],
-      "artifactName": "${productName}-${version}-Setup-${arch}.${ext}"
-    }
-  }
+  "author": "Takahiro SUZUKI"
 }

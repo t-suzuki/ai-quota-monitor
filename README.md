@@ -1,6 +1,6 @@
 # AI Quota Monitor
 
-Claude Code / Codex のクォータ使用状況を監視する Electron デスクトップアプリ。
+Claude Code / Codex のクォータ使用状況を監視する Tauri デスクトップアプリ。
 
 ## 機能
 
@@ -14,28 +14,25 @@ Claude Code / Codex のクォータ使用状況を監視する Electron デス�
 
 ## 主要方針
 
-- Electron は `nodeIntegration: false` / `contextIsolation: true` / `sandbox: true`。
-- レンダラには `preload` 経由で必要 API のみ公開する。
-- トークンは平文保存せず OS キーチェーン (`keytar`) に保存する。
-- 設定 (`pollInterval`, 通知閾値, ウィンドウ状態など) は Electron ストア (`userData/accounts.json`) に永続化する。
-- 自動更新は将来対応 (今回は未実装)。
+- フロントは `window.quotaApi` のみを利用し、Tauri コマンド経由で backend と通信する。
+- トークンは平文保存せず OS キーチェーンに保存する。
+- 設定 (`pollInterval`, 通知閾値, ウィンドウ状態など) は `appData/accounts.json` に永続化する。
 
 ## アーキテクチャ
 
 ```text
-Renderer (SPA)
-  -> preload (contextBridge)
-  -> ipcMain (main process)
-  -> keytar + upstream fetch
+Renderer (public/*.js)
+  -> tauri-bridge.js
+  -> Tauri invoke command (Rust)
+  -> keyring + upstream fetch
 ```
 
-- `src/core` に upstream 取得とパース処理を集約。
-- renderer は `window.quotaApi` 経由で main process と通信。
-- ポーリング状態は再起動時に復元し、即時取得して通常間隔で再開。
+- `src/core` は既存の JS テスト資産として保持。
+- 実行時の API 取得・ストア管理は `src-tauri/src/main.rs` で実装。
 
 ## セットアップ
 
-Node.js と npm が必要。
+Node.js と Rust ツールチェーンが必要。
 推奨: Node.js `22.x` (最低 `22.12.0`)。
 
 ```bash
@@ -47,7 +44,7 @@ npm install
 ```bash
 npm start
 # または
-npm run start:electron
+npm run start:tauri
 ```
 
 操作メモ:
@@ -60,16 +57,13 @@ npm run start:electron
 npm test
 ```
 
-`node:test` ベースで、API 取得処理はモック注入で検証する。
+`node:test` ベースで、JS ロジックの単体検証を行う。
 
-## Windows バイナリ作成
+## ビルド
 
 ```bash
-npm run dist:win
+npm run build:tauri
 ```
-
-生成物は `dist/` 配下に出力される。
-インストーラは NSIS の対話型モード (one-click 無効) で、ユーザの明示操作を必須にしている。
 
 ## トークン取得方法
 
@@ -118,15 +112,16 @@ security find-generic-password -s "Codex Auth" -w | jq -r '.tokens.access_token'
 
 ```text
 ai-quota-monitor/
-├── electron/
-│   ├── main.js
-│   ├── preload.js
-│   └── store.js
 ├── public/
 │   ├── app.js
 │   ├── account-ui.js
+│   ├── tauri-bridge.js
 │   ├── index.html
 │   └── ui-logic.js
+├── src-tauri/
+│   ├── src/main.rs
+│   ├── tauri.conf.json
+│   └── Cargo.toml
 ├── src/
 │   └── core/
 │       ├── parsers.js
@@ -134,11 +129,6 @@ ai-quota-monitor/
 │       └── usage-service.js
 ├── test/
 │   ├── core/
-│   │   ├── parsers.test.js
-│   │   ├── usage-clients.test.js
-│   │   └── usage-service.test.js
 │   └── ui/
-│       └── ui-logic.test.js
-├── package.json
-└── README.md
+└── package.json
 ```

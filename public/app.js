@@ -18,8 +18,8 @@ const state = {
 };
 
 const THRESHOLDS_EXHAUSTED = 100;
-if (!window.quotaApi || window.quotaApi.platform !== 'electron') {
-  throw new Error('Electron quotaApi bridge is required');
+if (!window.quotaApi || window.quotaApi.platform !== 'tauri') {
+  throw new Error('Tauri quotaApi bridge is required');
 }
 if (!window.UiLogic) {
   throw new Error('UiLogic helpers are required');
@@ -708,7 +708,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.hasSavedMinimalBounds = Boolean(windowState?.minimalBounds);
     applyMinimalModeUI(state.windowMode === 'minimal');
   } catch (e) {
-    log(`Electron 初期化に失敗: ${e.message || e}`, 'warn');
+    log(`Tauri 初期化に失敗: ${e.message || e}`, 'warn');
   }
 
   if (state.accounts.claude.length === 0) state.accounts.claude = [defaultAccount('claude', 0)];
