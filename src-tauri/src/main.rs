@@ -8,6 +8,7 @@ mod api_client;
 mod account_commands;
 mod commands;
 mod error;
+mod notification_commands;
 mod settings_commands;
 mod store_repo;
 mod token_store;
@@ -254,6 +255,13 @@ struct SetWindowPositionPayload {
     height: Option<i32>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SendNotificationPayload {
+    title: Option<String>,
+    body: Option<String>,
+}
+
 fn sanitize_string(input: Option<&str>, fallback: &str) -> String {
     let v = input.unwrap_or("").trim();
     if v.is_empty() {
@@ -265,6 +273,7 @@ fn sanitize_string(input: Option<&str>, fallback: &str) -> String {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let store = read_store(&handle)?;
@@ -289,6 +298,7 @@ fn main() {
             commands::set_window_mode,
             commands::set_window_position,
             commands::get_version,
+            commands::send_notification,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -307,6 +317,12 @@ mod tests {
     #[test]
     fn validate_token_accepts_common_jwt_format() {
         assert!(validation::validate_token("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abc_xyz-123/456").is_ok());
+    }
+
+    #[test]
+    fn validate_token_rejects_excessive_length() {
+        let too_long = "a".repeat(16385);
+        assert!(validation::validate_token(&too_long).is_err());
     }
 
     #[test]

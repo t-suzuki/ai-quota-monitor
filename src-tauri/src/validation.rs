@@ -6,7 +6,7 @@ use crate::error::{AppError, AppResult};
 const FETCH_USAGE_MIN_INTERVAL_MS: u64 = 500;
 const MAX_ACCOUNT_ID_LEN: usize = 128;
 const MAX_ACCOUNT_NAME_LEN: usize = 256;
-const MAX_TOKEN_LEN: usize = 4096;
+const MAX_TOKEN_LEN: usize = 16384;
 
 static FETCH_USAGE_RATE_LIMITER: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
 

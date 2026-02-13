@@ -124,6 +124,29 @@ test('normalizeAccountToken ignores unchanged masked token value', () => {
   assert.equal(edited, 'sk-live-123');
 });
 
+test('normalizeAccountToken extracts token when auth JSON is pasted', () => {
+  const codexJson = JSON.stringify({
+    tokens: { access_token: 'sk-codex-abc' },
+  });
+  const claudeJson = JSON.stringify({
+    claudeAiOauth: { accessToken: 'claude-xyz' },
+  });
+
+  const codexToken = normalizeAccountToken({
+    rawToken: codexJson,
+    tokenMasked: false,
+    savedTokenMask: '********************',
+  });
+  const claudeToken = normalizeAccountToken({
+    rawToken: claudeJson,
+    tokenMasked: false,
+    savedTokenMask: '********************',
+  });
+
+  assert.equal(codexToken, 'sk-codex-abc');
+  assert.equal(claudeToken, 'claude-xyz');
+});
+
 test('calcElapsedPct supports epoch seconds and ISO datetime', () => {
   const nowMs = 55_000;
   const epochBased = calcElapsedPct(100, 100, nowMs);

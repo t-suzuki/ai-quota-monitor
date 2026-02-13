@@ -3,6 +3,7 @@ use crate::account_commands::{
     save_account as save_account_impl,
 };
 use crate::api_client::FetchUsageResponse;
+use crate::notification_commands::send_notification as send_notification_impl;
 use crate::settings_commands::{
     get_polling_state as get_polling_state_impl, get_settings as get_settings_impl,
     set_polling_state as set_polling_state_impl, set_settings as set_settings_impl,
@@ -89,4 +90,12 @@ pub fn set_window_position(
 #[tauri::command]
 pub fn get_version(app: AppHandle) -> Result<String, String> {
     Ok(app.package_info().version.to_string())
+}
+
+#[tauri::command]
+pub fn send_notification(
+    app: AppHandle,
+    payload: crate::SendNotificationPayload,
+) -> Result<crate::ApiOk, String> {
+    send_notification_impl(app, payload).map_err(|e| e.to_string())
 }

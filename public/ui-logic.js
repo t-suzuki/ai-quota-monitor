@@ -87,6 +87,23 @@
   function normalizeAccountToken({ rawToken, tokenMasked, savedTokenMask }) {
     const trimmed = typeof rawToken === 'string' ? rawToken.trim() : '';
     if (tokenMasked && trimmed === savedTokenMask) return '';
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        const candidates = [
+          parsed?.tokens?.access_token,
+          parsed?.claudeAiOauth?.accessToken,
+          parsed?.access_token,
+          parsed?.accessToken,
+          parsed?.token,
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate === 'string' && candidate.trim()) {
+            return candidate.trim();
+          }
+        }
+      } catch {}
+    }
     return trimmed;
   }
 

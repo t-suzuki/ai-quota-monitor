@@ -96,6 +96,15 @@ const log = (msg, level = '') => {
   if (state.logs.length > MAX_LOG_ENTRIES) state.logs.length = MAX_LOG_ENTRIES;
   renderLogs();
 };
+const toErrorMessage = (error) => {
+  if (typeof error === 'string') return error;
+  if (error && typeof error.message === 'string' && error.message.trim()) return error.message;
+  try {
+    const serialized = JSON.stringify(error);
+    if (serialized && serialized !== '{}') return serialized;
+  } catch {}
+  return String(error ?? 'unknown error');
+};
 
 function classifyUtilization(pct) {
   return window.UiLogic.classifyUtilization(pct, state.notifySettings, THRESHOLDS_EXHAUSTED);
@@ -131,16 +140,17 @@ function formatReset(epoch) {
   return `${timeStr} (あと${m}分)`;
 }
 
-function notify(title, body) {
-  if (Notification.permission === 'granted') {
-    new Notification(title, { body, icon: '⚡' });
-  }
+async function notify(title, body) {
+  await window.quotaApi.sendNotification({ title, body });
+  return true;
 }
 
 function checkStatusTransition(prev, next, label, windows) {
   const effects = buildTransitionEffects(prev, next, label, windows, state.notifySettings);
   for (const item of effects.notifications) {
-    notify(item.title, item.body);
+    notify(item.title, item.body).catch((e) => {
+      log(`通知送信エラー: ${toErrorMessage(e)}`, 'warn');
+    });
   }
   for (const item of effects.logs) {
     log(item.message, item.level);
@@ -205,7 +215,7 @@ async function persistSetup() {
     didLogPersistError = false;
   } catch (e) {
     if (!didLogPersistError) {
-      log(`設定保存エラー: ${e.message || e}`, 'warn');
+      log(`設定保存エラー: ${toErrorMessage(e)}`, 'warn');
       didLogPersistError = true;
     }
   }
@@ -229,7 +239,7 @@ function persistPollingState() {
     didLogPollingPersistError = false;
   }).catch((e) => {
     if (!didLogPollingPersistError) {
-      log(`ポーリング状態保存エラー: ${e.message || e}`, 'warn');
+      log(`ポーリング状態保存エラー: ${toErrorMessage(e)}`, 'warn');
       didLogPollingPersistError = true;
     }
   });
@@ -278,8 +288,9 @@ async function pollServiceAccounts(service, accounts, nextServices, worstOf) {
       log(`${label} 取得成功: ${windows.map(w => `${w.name}=${w.utilization}%`).join(', ')}`);
       upsertDomTokenState(service, acc.id, true);
     } catch (e) {
-      nextServices[serviceKey] = { label, windows: [], status: 'error', error: e.message };
-      log(`${label} エラー: ${e.message}`, 'warn');
+      const errorMessage = toErrorMessage(e);
+      nextServices[serviceKey] = { label, windows: [], status: 'error', error: errorMessage };
+      log(`${label} エラー: ${errorMessage}`, 'warn');
     }
   }
 
@@ -538,7 +549,7 @@ async function toggleWindowModeByGesture() {
   try {
     await window.quotaApi.setWindowMode(payload);
   } catch (e) {
-    log(`ウィンドウ切替エラー: ${e.message || e}`, 'warn');
+    log(`ウィンドウ切替エラー: ${toErrorMessage(e)}`, 'warn');
   }
 }
 
@@ -590,7 +601,7 @@ function setupMinimalWindowDragHandlers() {
       })
       .catch((e) => {
         if (!didLogWindowMoveError) {
-          log(`ウィンドウ移動エラー: ${e.message || e}`, 'warn');
+          log(`ウィンドウ移動エラー: ${toErrorMessage(e)}`, 'warn');
           didLogWindowMoveError = true;
         }
       });
@@ -701,7 +712,7 @@ function ensureSetupOpenIfMissingToken(accounts) {
 }
 
 function showInitFailure(error) {
-  const message = error?.message || String(error);
+  const message = toErrorMessage(error);
   log(`Tauri 初期化に失敗: ${message}`, 'warn');
   const dash = $('#dashboard');
   if (dash) {
@@ -840,12 +851,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#threshold-warning').addEventListener('change', persistNotifySettings);
   $('#threshold-critical').addEventListener('change', persistNotifySettings);
   $('#btn-notify-test').addEventListener('click', async () => {
-    const perm = await Notification.requestPermission();
-    if (perm === 'granted') {
-      log('通知が許可されました', 'ok');
-      notify('テスト', 'AI Quota Monitor の通知が有効です');
-    } else {
-      log('通知が拒否されました', 'warn');
+    try {
+      await notify('テスト', 'AI Quota Monitor の通知が有効です');
+      log('テスト通知を送信しました', 'ok');
+    } catch (e) {
+      log(`通知テストに失敗しました: ${toErrorMessage(e)}`, 'warn');
     }
   });
 
@@ -880,7 +890,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       minWidth: metrics.minWidth,
       minHeight: metrics.minHeight,
     }).catch((e) => {
-      log(`ミニマル制約更新エラー: ${e.message || e}`, 'warn');
+      log(`ミニマル制約更新エラー: ${toErrorMessage(e)}`, 'warn');
     });
   }
 

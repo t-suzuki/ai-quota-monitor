@@ -21,6 +21,7 @@
     getWindowState: () => call('get_window_state'),
     setWindowMode: (payload) => call('set_window_mode', { payload }),
     setWindowPosition: (payload) => call('set_window_position', { payload }),
+    sendNotification: (payload) => call('send_notification', { payload }),
     getVersion: () => call('get_version'),
   };
 }(typeof window !== 'undefined' ? window : globalThis));

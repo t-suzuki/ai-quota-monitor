@@ -84,7 +84,7 @@
 
         row.innerHTML = `
           <input class="account-name" type="text" maxlength="256" placeholder="表示名" value="${escHtml(acc.name || '')}">
-          <input class="account-token" type="password" maxlength="4096" autocomplete="off" placeholder="eyJhbG... / sk-..." value="${escHtml(tokenView.tokenValue)}">
+          <input class="account-token" type="password" maxlength="16384" autocomplete="off" placeholder="eyJhbG... / sk-..." value="${escHtml(tokenView.tokenValue)}">
           <button class="btn-mini btn-remove-account" type="button">削除</button>
         `;
 
@@ -94,7 +94,10 @@
             try {
               await deleteAccount({ service, id: removed.id });
             } catch (e) {
-              log(`削除失敗: ${serviceMeta[service].label} ${removed.name || removed.id} (${e.message || e})`, 'warn');
+              const message = e && typeof e.message === 'string' && e.message.trim()
+                ? e.message
+                : String(e ?? 'unknown error');
+              log(`削除失敗: ${serviceMeta[service].label} ${removed.name || removed.id} (${message})`, 'warn');
               return;
             }
           }
