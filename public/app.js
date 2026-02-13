@@ -184,6 +184,7 @@ const accountUi = window.AccountUi.createAccountUi({
   normalizeAccountToken: window.UiLogic.normalizeAccountToken,
   queuePersistSetup,
   deleteAccount: (payload) => window.quotaApi.deleteAccount(payload),
+  oauthLogin: (payload) => window.quotaApi.oauthLogin(payload),
   log,
 });
 const {
@@ -256,6 +257,25 @@ function queuePersistSetup() {
 // ═══════════════════════════════════════
 // Poll orchestrator
 // ═══════════════════════════════════════
+async function tryAutoRefresh(service, id) {
+  try {
+    const status = await window.quotaApi.getTokenStatus({ service, id });
+    if (status && status.needsRefresh && status.hasRefreshToken) {
+      log(`トークンを自動更新中: ${SERVICE_META[service].label}`, '');
+      const result = await window.quotaApi.refreshToken({ service, id });
+      if (result.success) {
+        log(`トークンを自動更新しました: ${SERVICE_META[service].label}`, 'ok');
+        return true;
+      } else {
+        log(`トークン自動更新に失敗: ${result.message}`, 'warn');
+      }
+    }
+  } catch (e) {
+    log(`トークン更新チェックエラー: ${toErrorMessage(e)}`, 'warn');
+  }
+  return false;
+}
+
 async function pollServiceAccounts(service, accounts, nextServices, worstOf) {
   const meta = SERVICE_META[service];
   let anySuccess = false;
@@ -264,6 +284,9 @@ async function pollServiceAccounts(service, accounts, nextServices, worstOf) {
     if (!hasUsableToken(acc)) continue;
     const serviceKey = `${service}:${acc.id}`;
     const label = `${meta.label}: ${acc.name}`;
+
+    // Auto-refresh token if close to expiry
+    await tryAutoRefresh(service, acc.id);
 
     try {
       const result = await window.quotaApi.fetchUsage({

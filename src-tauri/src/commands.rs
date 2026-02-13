@@ -4,6 +4,9 @@ use crate::account_commands::{
 };
 use crate::api_client::FetchUsageResponse;
 use crate::notification_commands::send_notification as send_notification_impl;
+use crate::oauth_commands::{
+    self, OAuthLoginResult, TokenStatus,
+};
 use crate::settings_commands::{
     get_polling_state as get_polling_state_impl, get_settings as get_settings_impl,
     set_polling_state as set_polling_state_impl, set_settings as set_settings_impl,
@@ -98,4 +101,34 @@ pub fn send_notification(
     payload: crate::SendNotificationPayload,
 ) -> Result<crate::ApiOk, String> {
     send_notification_impl(app, payload).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn oauth_login(payload: crate::OAuthLoginPayload) -> Result<OAuthLoginResult, String> {
+    let service = crate::sanitize_string(payload.service.as_deref(), "");
+    let id = crate::sanitize_string(payload.id.as_deref(), "");
+    oauth_commands::oauth_login(&service, &id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn cancel_oauth_login() -> Result<crate::ApiOk, String> {
+    oauth_commands::cancel_login().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn refresh_token(payload: crate::OAuthLoginPayload) -> Result<OAuthLoginResult, String> {
+    let service = crate::sanitize_string(payload.service.as_deref(), "");
+    let id = crate::sanitize_string(payload.id.as_deref(), "");
+    oauth_commands::refresh_account_token(&service, &id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_token_status(payload: crate::OAuthLoginPayload) -> Result<TokenStatus, String> {
+    let service = crate::sanitize_string(payload.service.as_deref(), "");
+    let id = crate::sanitize_string(payload.id.as_deref(), "");
+    oauth_commands::get_token_status(&service, &id).map_err(|e| e.to_string())
 }

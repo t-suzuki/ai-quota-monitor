@@ -9,8 +9,11 @@ mod account_commands;
 mod commands;
 mod error;
 mod notification_commands;
+mod oauth;
+mod oauth_commands;
 mod settings_commands;
 mod store_repo;
+mod token_refresh;
 mod token_store;
 mod usage_commands;
 mod usage_parser;
@@ -262,6 +265,13 @@ struct SendNotificationPayload {
     body: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OAuthLoginPayload {
+    service: Option<String>,
+    id: Option<String>,
+}
+
 fn sanitize_string(input: Option<&str>, fallback: &str) -> String {
     let v = input.unwrap_or("").trim();
     if v.is_empty() {
@@ -274,6 +284,7 @@ fn sanitize_string(input: Option<&str>, fallback: &str) -> String {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let store = read_store(&handle)?;
@@ -299,6 +310,10 @@ fn main() {
             commands::set_window_position,
             commands::get_version,
             commands::send_notification,
+            commands::oauth_login,
+            commands::cancel_oauth_login,
+            commands::refresh_token,
+            commands::get_token_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

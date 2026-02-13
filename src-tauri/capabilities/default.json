@@ -7,6 +7,7 @@
     "core:app:default",
     "core:event:default",
     "core:webview:default",
-    "core:window:default"
+    "core:window:default",
+    "shell:allow-open"
   ]
 }
