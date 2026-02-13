@@ -47,7 +47,7 @@ h1 span { color: var(--ok); }
 .cmd-copy.copied { color: var(--ok); }
 .account-group { margin-bottom: 14px; }
 .account-list { display: flex; flex-direction: column; gap: 8px; }
-.account-row { display: grid; grid-template-columns: 160px 1fr auto auto; gap: 8px; align-items: center; }
+.account-row { display: grid; grid-template-columns: 160px 1fr auto auto auto; gap: 8px; align-items: center; }
 .account-row input { width: 100%; }
 .account-token { -webkit-text-security: disc; text-security: disc; }
 .btn-mini { background: var(--bg2); border: 1px solid var(--bg3); color: var(--fg2); padding: 6px 10px;
@@ -56,6 +56,8 @@ h1 span { color: var(--ok); }
 .btn-add { margin-top: 8px; }
 .btn-oauth-login { white-space: nowrap; font-size: 0.68rem; }
 .btn-oauth-login:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-cli-import { white-space: nowrap; font-size: 0.68rem; }
+.btn-cli-import:disabled { opacity: 0.5; cursor: not-allowed; }
 .oauth-status { font-size: 0.65rem; grid-column: 1 / -1; min-height: 0; }
 .oauth-status:empty { display: none; }
 .oauth-status[data-status="pending"] { color: var(--blue); }

@@ -118,6 +118,14 @@ pub fn cancel_oauth_login() -> Result<crate::ApiOk, String> {
 }
 
 #[tauri::command]
+pub fn import_claude_cli_credentials(payload: crate::OAuthLoginPayload) -> Result<OAuthLoginResult, String> {
+    let service = crate::sanitize_string(payload.service.as_deref(), "");
+    let id = crate::sanitize_string(payload.id.as_deref(), "");
+    oauth_commands::import_claude_cli_credentials(&service, &id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn refresh_token(payload: crate::OAuthLoginPayload) -> Result<OAuthLoginResult, String> {
     let service = crate::sanitize_string(payload.service.as_deref(), "");
     let id = crate::sanitize_string(payload.id.as_deref(), "");

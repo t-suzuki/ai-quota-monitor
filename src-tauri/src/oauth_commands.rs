@@ -2,7 +2,8 @@ use crate::error::{AppError, AppResult};
 use crate::oauth;
 use crate::token_refresh;
 use crate::token_store;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tokio::sync::oneshot;
 use zeroize::Zeroize;
@@ -47,8 +48,7 @@ pub struct TokenStatus {
 
 /// Start an OAuth login flow.
 /// - For Codex: opens browser, waits for local callback, returns completed result.
-/// - For Claude: opens browser, returns needs_code=true. Frontend then calls
-///   `oauth_exchange_code` with the code from the callback page.
+/// - For Claude: opens browser and returns needs_code=true for the two-step flow.
 pub async fn oauth_login(service: &str, id: &str) -> AppResult<OAuthLoginResult> {
     token_store::ensure_service(service)?;
     crate::validation::validate_account_id(id)?;
@@ -81,10 +81,59 @@ fn oauth_login_claude() -> AppResult<OAuthLoginResult> {
 
     Ok(OAuthLoginResult {
         success: false,
-        message: "ブラウザで認証してください。表示されたコードをペーストしてください。".into(),
+        message: "ブラウザで認証してください。`code` 文字列またはリダイレクト先URL全体をペーストしてください。".into(),
         has_token: false,
         expires_at: None,
         needs_code: Some(true),
+    })
+}
+
+/// Import Claude CLI credentials from ~/.claude/.credentials.json.
+pub fn import_claude_cli_credentials(service: &str, id: &str) -> AppResult<OAuthLoginResult> {
+    token_store::ensure_service(service)?;
+    crate::validation::validate_account_id(id)?;
+    if service != "claude" {
+        return Err(AppError::Message(
+            "Claude CLI credentials import is only supported for Claude".into(),
+        ));
+    }
+
+    let path = find_existing_claude_credentials_path()
+        .ok_or_else(|| AppError::Message("Claude CLI認証情報ファイルが見つかりませんでした".into()))?;
+
+    let raw = std::fs::read_to_string(&path).map_err(|e| {
+        AppError::Message(format!("Claude credentials を読み取れませんでした ({}): {e}", path.display()))
+    })?;
+
+    let parsed: ClaudeCredentialFile = serde_json::from_str(&raw).map_err(|e| {
+        AppError::Message(format!("Claude credentials の形式が不正です ({}): {e}", path.display()))
+    })?;
+
+    let oauth = parsed
+        .claude_ai_oauth
+        .ok_or_else(|| AppError::Message(format!("claudeAiOauth が見つかりません ({})", path.display())))?;
+
+    if oauth.access_token.trim().is_empty() {
+        return Err(AppError::Message(format!(
+            "accessToken が空です ({})",
+            path.display()
+        )));
+    }
+
+    let mut tokens = oauth::OAuthTokens {
+        access_token: oauth.access_token,
+        refresh_token: oauth.refresh_token,
+        expires_at: oauth.expires_at,
+    };
+    let expires_at = tokens.expires_at;
+    store_tokens("claude", id, &mut tokens)?;
+
+    Ok(OAuthLoginResult {
+        success: true,
+        message: "Claude CLIの認証情報を取り込みました".into(),
+        has_token: true,
+        expires_at,
+        needs_code: None,
     })
 }
 
@@ -153,7 +202,7 @@ pub async fn oauth_exchange_code(
         ));
     }
 
-    let (verifier, _state) = {
+    let (verifier, state) = {
         let mut lock = claude_pending_store()
             .lock()
             .map_err(|_| AppError::Message("Lock poisoned".into()))?;
@@ -161,7 +210,7 @@ pub async fn oauth_exchange_code(
             .ok_or_else(|| AppError::Message("No pending Claude login. Start login first.".into()))?
     };
 
-    let result = oauth::claude::exchange_code(code, &verifier).await;
+    let result = oauth::claude::exchange_code(code, &verifier, Some(&state)).await;
 
     match result {
         Ok(mut tokens) => {
@@ -273,4 +322,49 @@ fn now_millis() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as i64
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaudeCredentialFile {
+    claude_ai_oauth: Option<ClaudeCredentialOauth>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClaudeCredentialOauth {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_at: Option<i64>,
+}
+
+fn find_existing_claude_credentials_path() -> Option<PathBuf> {
+    for candidate in claude_credentials_candidates() {
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn claude_credentials_candidates() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+
+    if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
+        let dir = dir.trim();
+        if !dir.is_empty() {
+            out.push(PathBuf::from(dir).join(".credentials.json"));
+        }
+    }
+
+    for key in ["HOME", "USERPROFILE"] {
+        if let Ok(home) = std::env::var(key) {
+            let home = home.trim();
+            if !home.is_empty() {
+                out.push(PathBuf::from(home).join(".claude").join(".credentials.json"));
+            }
+        }
+    }
+
+    out
 }

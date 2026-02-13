@@ -25,6 +25,7 @@
     getVersion: () => call('get_version'),
     oauthLogin: (payload) => call('oauth_login', { payload }),
     cancelOauthLogin: () => call('cancel_oauth_login'),
+    importClaudeCliCredentials: (payload) => call('import_claude_cli_credentials', { payload }),
     refreshToken: (payload) => call('refresh_token', { payload }),
     getTokenStatus: (payload) => call('get_token_status', { payload }),
     oauthExchangeCode: (payload) => call('oauth_exchange_code', { payload }),

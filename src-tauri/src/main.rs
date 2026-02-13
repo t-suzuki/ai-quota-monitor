@@ -320,6 +320,7 @@ fn main() {
             commands::send_notification,
             commands::oauth_login,
             commands::cancel_oauth_login,
+            commands::import_claude_cli_credentials,
             commands::refresh_token,
             commands::get_token_status,
             commands::oauth_exchange_code,

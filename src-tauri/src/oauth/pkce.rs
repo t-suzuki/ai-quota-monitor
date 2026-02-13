@@ -24,7 +24,9 @@ pub fn generate() -> PkceChallenge {
 }
 
 pub fn random_state() -> String {
-    let mut buf = [0u8; 16];
+    // Use 32 bytes to align with common OAuth client implementations
+    // (43-char base64url), including Claude CLI behavior.
+    let mut buf = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut buf);
     URL_SAFE_NO_PAD.encode(buf)
 }
@@ -55,5 +57,11 @@ mod tests {
         let a = random_state();
         let b = random_state();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn random_state_has_expected_entropy_length() {
+        let s = random_state();
+        assert!(s.len() >= 43);
     }
 }

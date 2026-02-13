@@ -185,6 +185,7 @@ const accountUi = window.AccountUi.createAccountUi({
   queuePersistSetup,
   deleteAccount: (payload) => window.quotaApi.deleteAccount(payload),
   oauthLogin: (payload) => window.quotaApi.oauthLogin(payload),
+  importClaudeCliCredentials: (payload) => window.quotaApi.importClaudeCliCredentials(payload),
   oauthExchangeCode: (payload) => window.quotaApi.oauthExchangeCode(payload),
   log,
 });

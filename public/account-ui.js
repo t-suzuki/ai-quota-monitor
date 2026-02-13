@@ -18,6 +18,7 @@
       queuePersistSetup,
       deleteAccount,
       oauthLogin,
+      importClaudeCliCredentials,
       oauthExchangeCode,
       log,
       makeId,
@@ -83,11 +84,13 @@
           savedTokenMask,
         });
         row.dataset.tokenMasked = tokenView.tokenMasked ? '1' : '0';
+        const canImportClaudeCli = service === 'claude' && typeof importClaudeCliCredentials === 'function';
 
         row.innerHTML = `
           <input class="account-name" type="text" maxlength="256" placeholder="表示名" value="${escHtml(acc.name || '')}">
           <input class="account-token" type="password" maxlength="16384" autocomplete="off" placeholder="eyJhbG... / sk-..." value="${escHtml(tokenView.tokenValue)}">
           <button class="btn-mini btn-oauth-login" type="button" title="OAuth ログイン">🔐 ログイン</button>
+          ${canImportClaudeCli ? '<button class="btn-mini btn-cli-import" type="button" title="Claude CLI から取り込み">📥 CLI取込</button>' : ''}
           <button class="btn-mini btn-remove-account" type="button">削除</button>
           <span class="oauth-status" data-status=""></span>
         `;
@@ -114,9 +117,11 @@
           const acc = accountFromRow(row);
           const statusEl = row.querySelector('.oauth-status');
           const loginBtn = row.querySelector('.btn-oauth-login');
+          const importBtn = row.querySelector('.btn-cli-import');
           statusEl.textContent = 'ブラウザを開いています...';
           statusEl.dataset.status = 'pending';
           loginBtn.disabled = true;
+          if (importBtn) importBtn.disabled = true;
           try {
             const result = await oauthLogin({ service, id: acc.id });
             if (result.needsCode) {
@@ -124,7 +129,7 @@
               statusEl.textContent = result.message;
               statusEl.dataset.status = 'pending';
               loginBtn.disabled = false;
-              const code = prompt('ブラウザに表示された認証コードを貼り付けてください:');
+              const code = prompt('認証コード、またはリダイレクト先URL全体を貼り付けてください:');
               if (!code || !code.trim()) {
                 statusEl.textContent = 'キャンセルされました';
                 statusEl.dataset.status = 'error';
@@ -162,8 +167,44 @@
             log(`OAuth ログインエラー (${serviceMeta[service].label}): ${msg}`, 'warn');
           } finally {
             loginBtn.disabled = false;
+            if (importBtn) importBtn.disabled = false;
           }
         });
+
+        const importBtn = row.querySelector('.btn-cli-import');
+        if (importBtn) {
+          importBtn.addEventListener('click', async () => {
+            const acc = accountFromRow(row);
+            const statusEl = row.querySelector('.oauth-status');
+            const loginBtn = row.querySelector('.btn-oauth-login');
+            statusEl.textContent = 'Claude CLI 認証情報を取り込み中...';
+            statusEl.dataset.status = 'pending';
+            loginBtn.disabled = true;
+            importBtn.disabled = true;
+            try {
+              const result = await importClaudeCliCredentials({ service, id: acc.id });
+              if (result.success) {
+                statusEl.textContent = result.message || '取り込み成功';
+                statusEl.dataset.status = 'ok';
+                row.dataset.hasToken = '1';
+                const tokenInput = row.querySelector('.account-token');
+                if (tokenInput) { tokenInput.value = savedTokenMask; row.dataset.tokenMasked = '1'; }
+                queuePersistSetup();
+              } else {
+                statusEl.textContent = result.message || '取り込み失敗';
+                statusEl.dataset.status = 'error';
+              }
+            } catch (e) {
+              const msg = e && typeof e === 'string' ? e : (e?.message || String(e));
+              statusEl.textContent = msg;
+              statusEl.dataset.status = 'error';
+              log(`CLI 取り込みエラー (${serviceMeta[service].label}): ${msg}`, 'warn');
+            } finally {
+              loginBtn.disabled = false;
+              importBtn.disabled = false;
+            }
+          });
+        }
 
         row.querySelector('.account-name').addEventListener('input', queuePersistSetup);
 
