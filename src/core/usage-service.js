@@ -2,13 +2,16 @@ const { fetchClaudeUsageRaw, fetchCodexUsageRaw, safeJsonParse } = require('./us
 const { parseClaudeUsage, parseCodexUsage } = require('./parsers');
 
 function buildError(raw, parsed) {
-  if (parsed && typeof parsed === 'object') {
-    return parsed.error || parsed.detail || `HTTP ${raw.status}`;
-  }
   if (raw.status === 403 && raw.contentType.includes('text/html')) {
     return 'Upstream blocked request (OpenAI edge / Cloudflare)';
   }
-  return `HTTP ${raw.status}`;
+  if (raw.status === 400) return 'Upstream rejected request (HTTP 400)';
+  if (raw.status === 401) return 'Authentication failed (HTTP 401)';
+  if (raw.status === 403) return 'Permission denied by upstream (HTTP 403)';
+  if (raw.status === 404) return 'Upstream endpoint not found (HTTP 404)';
+  if (raw.status === 429) return 'Upstream rate limit exceeded (HTTP 429)';
+  if (raw.status >= 500 && raw.status < 600) return `Upstream server error (HTTP ${raw.status})`;
+  return `Upstream request failed (HTTP ${raw.status})`;
 }
 
 function createUsageService(deps = {}) {

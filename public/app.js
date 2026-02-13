@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════
 const state = {
   polling: false,
+  pollInFlight: false,
   timer: null,
   pollStartedAt: null,
   pollInterval: 120,
@@ -18,6 +19,9 @@ const state = {
 };
 
 const THRESHOLDS_EXHAUSTED = 100;
+const POLL_RING_TICK_MS = 1000;
+const SETUP_PERSIST_DEBOUNCE_MS = 200;
+const HISTORY_RESET_DROP_PCT = 5;
 if (!window.quotaApi || window.quotaApi.platform !== 'tauri') {
   throw new Error('Tauri quotaApi bridge is required');
 }
@@ -39,7 +43,6 @@ const MINIMAL_FLOOR_W = MINIMAL_CARD_WIDTH - 40;           // validation floor f
 const SAVED_TOKEN_MASK = '********************';
 const SESSION_KEYS = {
   services: 'qm-services',
-  raw: 'qm-raw',
   history: 'qm-history',
   fetchedAt: 'qm-fetched-at',
 };
@@ -196,7 +199,6 @@ async function persistSetup() {
 function persistLastData() {
   try {
     sessionStorage.setItem(SESSION_KEYS.services, JSON.stringify(state.services));
-    sessionStorage.setItem(SESSION_KEYS.raw, JSON.stringify(state.rawResponses));
     sessionStorage.setItem(SESSION_KEYS.history, JSON.stringify(state.history));
     sessionStorage.setItem(SESSION_KEYS.fetchedAt, new Date().toISOString());
   } catch {}
@@ -223,7 +225,7 @@ function queuePersistSetup() {
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
     persistSetup();
-  }, 200);
+  }, SETUP_PERSIST_DEBOUNCE_MS);
 }
 
 // ═══════════════════════════════════════
@@ -303,7 +305,7 @@ function recordHistory(key, utilization) {
   if (!state.history[key]) state.history[key] = [];
   const arr = state.history[key];
   // If utilization dropped significantly (quota reset), clear history
-  if (arr.length > 0 && utilization < arr[arr.length - 1] - 5) arr.length = 0;
+  if (arr.length > 0 && utilization < arr[arr.length - 1] - HISTORY_RESET_DROP_PCT) arr.length = 0;
   arr.push(utilization);
   if (arr.length > 10) arr.shift();
 }
@@ -358,6 +360,21 @@ function updatePollRing() {
       stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="-${offset.toFixed(2)}"
       stroke-linecap="round" transform="rotate(-90 18 18)"/>
   </svg>`;
+}
+
+function startRingTimer() {
+  if (!state.polling || document.hidden) return;
+  if (state.ringTimer) return;
+  state.ringTimer = setInterval(() => {
+    updatePollRing();
+    updateCountdown();
+  }, POLL_RING_TICK_MS);
+}
+
+function stopRingTimer() {
+  if (!state.ringTimer) return;
+  clearInterval(state.ringTimer);
+  state.ringTimer = null;
 }
 
 // ═══════════════════════════════════════
@@ -595,33 +612,46 @@ function setupMinimalWindowDragHandlers() {
 // ═══════════════════════════════════════
 // Controls
 // ═══════════════════════════════════════
+async function runPollCycle() {
+  if (!state.polling || state.pollInFlight) return;
+  state.pollInFlight = true;
+  state.pollStartedAt = Date.now();
+  persistPollingState();
+  updatePollRing();
+  updateCountdown();
+  updatePollStatus('取得中...');
+
+  try {
+    await pollAll();
+    updatePollStatus('取得完了');
+  } finally {
+    state.pollInFlight = false;
+  }
+}
+
 function startPolling() {
   stopPolling(false);
   const intervalSec = Math.max(30, parseInt($('#poll-interval').value, 10) || 120);
   state.polling = true;
   state.pollInterval = intervalSec;
   state.pollStartedAt = Date.now();
+  state.pollInFlight = false;
   persistPollingState();
   $('#btn-start').textContent = '⏹ 停止';
   $('#btn-start').classList.add('active');
-  updatePollStatus('取得中...');
-  pollAll().then(() => { state.pollStartedAt = Date.now(); persistPollingState(); updatePollRing(); updateCountdown(); });
   state.timer = setInterval(() => {
-    updatePollStatus('取得中...');
-    pollAll().then(() => {
-      state.pollStartedAt = Date.now();
-      persistPollingState();
-      updateCountdown();
-    });
+    runPollCycle();
   }, intervalSec * 1000);
-  state.ringTimer = setInterval(() => { updatePollRing(); updateCountdown(); }, 1000);
+  startRingTimer();
+  runPollCycle();
   queuePersistSetup();
 }
 
 function stopPolling(persistState = true) {
   state.polling = false;
+  state.pollInFlight = false;
   if (state.timer) { clearInterval(state.timer); state.timer = null; }
-  if (state.ringTimer) { clearInterval(state.ringTimer); state.ringTimer = null; }
+  stopRingTimer();
   state.pollStartedAt = null;
   if (persistState) persistPollingState();
   updatePollRing();
@@ -640,6 +670,7 @@ function updatePollStatus(msg) {
 }
 
 function updateCountdown() {
+  if (document.hidden) return;
   const timing = computePollingState({
     polling: state.polling,
     pollStartedAt: state.pollStartedAt,
@@ -678,6 +709,20 @@ function ensureSetupOpenIfMissingToken(accounts) {
   if (!hasAnyUsableToken(accounts)) $('#setup').open = true;
 }
 
+function showInitFailure(error) {
+  const message = error?.message || String(error);
+  log(`Tauri 初期化に失敗: ${message}`, 'warn');
+  const dash = $('#dashboard');
+  if (dash) {
+    dash.innerHTML = '<div class="empty">初期化に失敗しました。アプリを再起動してください。</div>';
+  }
+  updatePollStatus('初期化失敗');
+  const startBtn = $('#btn-start');
+  const pollBtn = $('#btn-poll');
+  if (startBtn) startBtn.disabled = true;
+  if (pollBtn) pollBtn.disabled = true;
+}
+
 // ═══════════════════════════════════════
 // Init
 // ═══════════════════════════════════════
@@ -708,7 +753,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.hasSavedMinimalBounds = Boolean(windowState?.minimalBounds);
     applyMinimalModeUI(state.windowMode === 'minimal');
   } catch (e) {
-    log(`Tauri 初期化に失敗: ${e.message || e}`, 'warn');
+    showInitFailure(e);
+    return;
   }
 
   if (state.accounts.claude.length === 0) state.accounts.claude = [defaultAccount('claude', 0)];
@@ -723,11 +769,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   try {
     const svcs = sessionStorage.getItem(SESSION_KEYS.services);
-    const raw = sessionStorage.getItem(SESSION_KEYS.raw);
     const fetchedAt = sessionStorage.getItem(SESSION_KEYS.fetchedAt);
     if (svcs) {
       state.services = JSON.parse(svcs);
-      state.rawResponses = raw ? JSON.parse(raw) : {};
+      state.rawResponses = {};
       const histRaw = sessionStorage.getItem(SESSION_KEYS.history);
       if (histRaw) state.history = JSON.parse(histRaw);
       reclassifyAllServices();
@@ -748,14 +793,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   $('#btn-poll').addEventListener('click', () => {
+    if (state.pollInFlight) {
+      log('現在の取得処理が完了するまで待機してください', 'warn');
+      return;
+    }
     const accounts = collectAccounts();
     if (!hasAnyUsableToken(accounts)) {
       log('トークンが設定されていません', 'warn');
       ensureSetupOpenIfMissingToken(accounts);
       return;
     }
+    if (state.polling) {
+      runPollCycle();
+      return;
+    }
+    state.pollInFlight = true;
     updatePollStatus('取得中...');
-    pollAll().then(() => updatePollStatus('取得完了'));
+    pollAll()
+      .then(() => updatePollStatus('取得完了'))
+      .finally(() => {
+        state.pollInFlight = false;
+      });
   });
 
   $('#notify-critical').checked = state.notifySettings.critical;
@@ -796,6 +854,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('dblclick', (event) => {
     if (!isMinimalToggleTarget(event.target)) return;
     toggleWindowModeByGesture();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!state.polling) return;
+    if (document.hidden) {
+      stopRingTimer();
+      return;
+    }
+    startRingTimer();
+    updatePollRing();
+    updateCountdown();
   });
   setupMinimalWindowDragHandlers();
 

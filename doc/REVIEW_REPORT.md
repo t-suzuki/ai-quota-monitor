@@ -325,4 +325,56 @@ font-src 'self' data:;
 
 ---
 
+## 9. 対応進捗メモ
+
+### 2026-02-13 1回目更新
+
+実施済み（中以上）:
+- [x] **S-1 Bearer トークンのフォーマット検証**  
+  `src-tauri/src/main.rs` にトークン検証を追加。改行/制御文字/非許可文字を拒否。
+- [x] **S-4 HTTP リクエストタイムアウト未設定**  
+  `reqwest::Client::builder().timeout(30s)` を適用。
+- [x] **S-7 API レート制限なし**  
+  `fetch_usage` に 500ms のサーバー側レート制限を追加（アカウント単位）。
+- [x] **S-8 エラーメッセージ情報漏洩**  
+  上流 API エラーの生文言転送を廃止し、HTTP ステータス別の定型メッセージへ変更。
+- [x] **S-10 入力文字列の長さ制限なし**  
+  アカウント ID / 名前 / トークンに長さと文字種の検証を追加。
+- [x] **`account-ui.js` トークン入力 `type="text"`**  
+  `type="password"` + `maxlength` を適用。
+- [x] **`account-ui.js` 削除失敗時の DOM 先行更新**  
+  サーバー削除失敗時は行を削除しない挙動へ変更。
+- [x] **`app.js` ポーリング競合状態**  
+  `pollInFlight` 制御を導入し、重複ポーリング実行を防止。
+- [x] **`app.js` 初期化失敗時の継続実行**  
+  初期化失敗時は UI を失敗状態にして処理を中断。
+- [x] **`app.js` 毎秒タイマー更新（非表示時含む）**  
+  `visibilitychange` と連携し、非表示時はリング更新タイマー停止。
+- [x] **S-9 sessionStorage への生レスポンス保存**  
+  `rawResponses` の sessionStorage 永続化を廃止。
+- [x] **`usage-clients.js` ネットワークエラー未キャッチ**  
+  fetch/text 読み出し失敗を明示的に補足し、文脈付きエラーに変換。
+
+未対応（中以上、継続）:
+- [ ] **S-3 API エンドポイントのハードニング（証明書ピンニング等）**
+- [ ] **S-5 CSP `unsafe-inline` 除去**
+- [ ] **S-6 Tauri ケーパビリティ最小化**
+- [ ] **`main.rs` のモジュール分割 / 型付きエラー化 / I/O キャッシュ化**
+
+### 2026-02-13 2回目更新
+
+追加対応:
+- [x] **S-2 トークンのメモリ残留**  
+  `zeroize` を導入し、`fetch_usage` / `save_account` のトークン一時文字列と Keyring 取得トークンを使用後にゼロ化。
+- [x] **S-14 `delete_token` のエラー無視（低）**  
+  削除失敗を握りつぶさず、`NoEntry` 以外はエラーを返すよう修正（副次対応）。
+- [x] **テスト拡張（JS/Rust）**  
+  `usage-clients` / `usage-service` のテスト更新、および `main.rs` にバリデーション・レート制限のユニットテストを追加。
+
+検証状況:
+- [ ] **自動テスト実行**  
+  この実行環境には `npm` と `cargo` が存在せず、`npm test` / `cargo test` は実行不可（`command not found`）。
+
+---
+
 *以上*

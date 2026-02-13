@@ -92,4 +92,18 @@ test('fetch client throws when token is missing', async () => {
 
   await assert.rejects(() => client.fetchClaudeUsageRaw(''), /Token is required/);
   await assert.rejects(() => client.fetchCodexUsageRaw(null), /Token is required/);
+  await assert.rejects(() => client.fetchCodexUsageRaw('   '), /Token is required/);
+});
+
+test('fetchUsageRaw surfaces network errors with context', async () => {
+  const client = createUsageClient({
+    fetchImpl: async () => {
+      throw new Error('socket hang up');
+    },
+  });
+
+  await assert.rejects(
+    () => client.fetchClaudeUsageRaw('abc123'),
+    /Network request failed: socket hang up/
+  );
 });

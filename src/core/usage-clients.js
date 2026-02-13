@@ -1,7 +1,7 @@
 const ANTHROPIC_OAUTH_BETA = 'oauth-2025-04-20';
 
 function assertToken(token) {
-  if (!token || typeof token !== 'string') {
+  if (!token || typeof token !== 'string' || !token.trim()) {
     throw new Error('Token is required');
   }
 }
@@ -26,9 +26,19 @@ function createUsageClient(deps = {}) {
   const fetchImpl = deps.fetchImpl || fetch;
 
   async function fetchUsageRaw(url, headers) {
-    const upstream = await fetchImpl(url, { headers });
+    let upstream;
+    try {
+      upstream = await fetchImpl(url, { headers });
+    } catch (error) {
+      throw new Error(`Network request failed: ${error?.message || error}`);
+    }
     const contentType = upstream.headers.get('content-type') || 'application/json';
-    const body = await upstream.text();
+    let body = '';
+    try {
+      body = await upstream.text();
+    } catch (error) {
+      throw new Error(`Failed to read upstream response body: ${error?.message || error}`);
+    }
     return {
       ok: upstream.ok,
       status: upstream.status,

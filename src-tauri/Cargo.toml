@@ -14,3 +14,4 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 keyring = "2"
 tauri = { version = "2", features = [] }
+zeroize = "1"

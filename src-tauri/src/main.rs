@@ -3,14 +3,22 @@
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Position, Size, WebviewWindow};
+use zeroize::Zeroize;
 
 const APP_NAME: &str = "AI Quota Monitor";
 const STORE_FILE: &str = "accounts.json";
 const ANTHROPIC_OAUTH_BETA: &str = "oauth-2025-04-20";
+const HTTP_REQUEST_TIMEOUT_SECS: u64 = 30;
+const FETCH_USAGE_MIN_INTERVAL_MS: u64 = 500;
+const MAX_ACCOUNT_ID_LEN: usize = 128;
+const MAX_ACCOUNT_NAME_LEN: usize = 256;
+const MAX_TOKEN_LEN: usize = 4096;
 
 const NORMAL_WINDOW_DEFAULT_W: i32 = 1100;
 const NORMAL_WINDOW_DEFAULT_H: i32 = 840;
@@ -25,6 +33,7 @@ const MINIMAL_WINDOW_DEFAULT_H: i32 = 420;
 const MINIMAL_WINDOW_MIN_H_DEFAULT: i32 = 240;
 const MINIMAL_FLOOR_W: i32 = MINIMAL_CARD_WIDTH - 40;
 const MINIMAL_FLOOR_H: i32 = 220;
+static FETCH_USAGE_RATE_LIMITER: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -318,6 +327,92 @@ fn sanitize_string(input: Option<&str>, fallback: &str) -> String {
     }
 }
 
+fn has_control_chars(input: &str) -> bool {
+    input.chars().any(char::is_control)
+}
+
+fn validate_account_id(id: &str) -> Result<(), String> {
+    if id.is_empty() {
+        return Err("Account id is required".to_string());
+    }
+    if id.len() > MAX_ACCOUNT_ID_LEN {
+        return Err(format!(
+            "Account id is too long (max {MAX_ACCOUNT_ID_LEN} chars)"
+        ));
+    }
+    if has_control_chars(id) {
+        return Err("Account id contains control characters".to_string());
+    }
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    {
+        return Err("Account id contains unsupported characters".to_string());
+    }
+    Ok(())
+}
+
+fn validate_account_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Account name is required".to_string());
+    }
+    if name.len() > MAX_ACCOUNT_NAME_LEN {
+        return Err(format!(
+            "Account name is too long (max {MAX_ACCOUNT_NAME_LEN} chars)"
+        ));
+    }
+    if has_control_chars(name) {
+        return Err("Account name contains control characters".to_string());
+    }
+    Ok(())
+}
+
+fn validate_token(token: &str) -> Result<(), String> {
+    if token.is_empty() {
+        return Err("Token is required".to_string());
+    }
+    if token.len() > MAX_TOKEN_LEN {
+        return Err(format!("Token is too long (max {MAX_TOKEN_LEN} chars)"));
+    }
+    if has_control_chars(token) {
+        return Err("Token contains control characters".to_string());
+    }
+    if !token
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/'))
+    {
+        return Err("Token contains unsupported characters".to_string());
+    }
+    Ok(())
+}
+
+fn enforce_fetch_usage_rate_limit(service: &str, id: &str) -> Result<(), String> {
+    let key = format!("{service}:{id}");
+    let limiter = FETCH_USAGE_RATE_LIMITER.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut lock = limiter
+        .lock()
+        .map_err(|_| "Rate limiter lock is poisoned".to_string())?;
+
+    if lock.len() > 4096 {
+        let ttl = Duration::from_secs(600);
+        let now = Instant::now();
+        lock.retain(|_, seen_at| now.duration_since(*seen_at) <= ttl);
+    }
+
+    let now = Instant::now();
+    let min_interval = Duration::from_millis(FETCH_USAGE_MIN_INTERVAL_MS);
+    if let Some(previous) = lock.get(&key) {
+        let elapsed = now.duration_since(*previous);
+        if elapsed < min_interval {
+            let wait_ms = min_interval.saturating_sub(elapsed).as_millis();
+            return Err(format!("Rate limited. Retry in {wait_ms}ms"));
+        }
+    }
+
+    lock.insert(key, now);
+    Ok(())
+}
+
 fn default_normal_bounds() -> Bounds {
     Bounds {
         width: NORMAL_WINDOW_DEFAULT_W,
@@ -413,8 +508,16 @@ fn normalize_accounts(raw: Option<&Vec<AccountEntryRaw>>, service: &str) -> Vec<
         if id.is_empty() {
             continue;
         }
+        if validate_account_id(&id).is_err() {
+            continue;
+        }
         let fallback = format!("{}:{}", service, id);
-        let name = sanitize_string(entry.name.as_deref(), &fallback);
+        let name_candidate = sanitize_string(entry.name.as_deref(), &fallback);
+        let name = if validate_account_name(&name_candidate).is_ok() {
+            name_candidate
+        } else {
+            fallback
+        };
         out.push(AccountEntry { id, name });
     }
     out
@@ -597,8 +700,11 @@ fn set_token(service: &str, id: &str, token: &str) -> Result<(), String> {
 fn delete_token(service: &str, id: &str) -> Result<(), String> {
     let entry = keyring::Entry::new(APP_NAME, &token_key(service, id))
         .map_err(|e| format!("Failed to open keyring entry: {e}"))?;
-    let _ = entry.delete_password();
-    Ok(())
+    match entry.delete_password() {
+        Ok(_) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("Failed to delete token from keyring: {e}")),
+    }
 }
 
 fn current_window_bounds(window: &WebviewWindow) -> Result<Bounds, String> {
@@ -937,25 +1043,27 @@ fn parse_codex_usage(data: &Value) -> Vec<UsageWindow> {
     windows
 }
 
-fn build_error(status: u16, content_type: &str, parsed: Option<&Value>) -> String {
-    if let Some(obj) = parsed.and_then(Value::as_object) {
-        if let Some(v) = obj.get("error").and_then(Value::as_str) {
-            return v.to_string();
-        }
-        if let Some(v) = obj.get("detail").and_then(Value::as_str) {
-            return v.to_string();
-        }
-    }
-
+fn build_error(status: u16, content_type: &str) -> String {
     if status == 403 && content_type.contains("text/html") {
         return "Upstream blocked request (OpenAI edge / Cloudflare)".to_string();
     }
 
-    format!("HTTP {status}")
+    match status {
+        400 => "Upstream rejected request (HTTP 400)".to_string(),
+        401 => "Authentication failed (HTTP 401)".to_string(),
+        403 => "Permission denied by upstream (HTTP 403)".to_string(),
+        404 => "Upstream endpoint not found (HTTP 404)".to_string(),
+        429 => "Upstream rate limit exceeded (HTTP 429)".to_string(),
+        500..=599 => format!("Upstream server error (HTTP {status})"),
+        _ => format!("Upstream request failed (HTTP {status})"),
+    }
 }
 
 async fn fetch_usage_raw(url: &str, headers: HeaderMap) -> Result<RawUpstream, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
     let response = client
         .get(url)
         .headers(headers)
@@ -985,9 +1093,8 @@ async fn fetch_usage_raw(url: &str, headers: HeaderMap) -> Result<RawUpstream, S
 }
 
 async fn fetch_claude_usage_raw(token: &str) -> Result<RawUpstream, String> {
-    if token.trim().is_empty() {
-        return Err("Token is required".to_string());
-    }
+    let token = token.trim();
+    validate_token(token)?;
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -1005,9 +1112,8 @@ async fn fetch_claude_usage_raw(token: &str) -> Result<RawUpstream, String> {
 }
 
 async fn fetch_codex_usage_raw(token: &str) -> Result<RawUpstream, String> {
-    if token.trim().is_empty() {
-        return Err("Token is required".to_string());
-    }
+    let token = token.trim();
+    validate_token(token)?;
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -1027,13 +1133,12 @@ async fn fetch_normalized_usage(service: &str, token: &str) -> Result<FetchUsage
         _ => return Err("Unsupported service".to_string()),
     };
 
-    let parsed: Option<Value> = serde_json::from_str(&raw.body).ok();
-
     if !raw.ok {
-        return Err(build_error(raw.status, &raw.content_type, parsed.as_ref()));
+        return Err(build_error(raw.status, &raw.content_type));
     }
 
-    let parsed = parsed.ok_or_else(|| "Upstream returned non-JSON response".to_string())?;
+    let parsed: Value = serde_json::from_str(&raw.body)
+        .map_err(|_| "Upstream returned non-JSON response".to_string())?;
     let windows = match service {
         "claude" => parse_claude_usage(&parsed),
         "codex" => parse_codex_usage(&parsed),
@@ -1055,8 +1160,16 @@ fn list_accounts(app: AppHandle) -> Result<AccountsSnapshot, String> {
                 if id.is_empty() {
                     return None;
                 }
+                if validate_account_id(&id).is_err() {
+                    return None;
+                }
                 let fallback = format!("{service}:{id}");
-                let name = sanitize_string(Some(&entry.name), &fallback);
+                let name_candidate = sanitize_string(Some(&entry.name), &fallback);
+                let name = if validate_account_name(&name_candidate).is_ok() {
+                    name_candidate
+                } else {
+                    fallback
+                };
                 let has_token = get_token(service, &id).is_some();
                 Some(AccountSnapshotEntry {
                     id,
@@ -1075,17 +1188,16 @@ fn list_accounts(app: AppHandle) -> Result<AccountsSnapshot, String> {
 }
 
 #[tauri::command]
-fn save_account(app: AppHandle, payload: SaveAccountPayload) -> Result<AccountSnapshotEntry, String> {
+fn save_account(app: AppHandle, mut payload: SaveAccountPayload) -> Result<AccountSnapshotEntry, String> {
     let service = sanitize_string(payload.service.as_deref(), "");
     ensure_service(&service)?;
 
     let id = sanitize_string(payload.id.as_deref(), "");
-    if id.is_empty() {
-        return Err("Account id is required".to_string());
-    }
+    validate_account_id(&id)?;
 
     let fallback_name = format!("{} {}", service.to_uppercase(), id);
     let name = sanitize_string(payload.name.as_deref(), &fallback_name);
+    validate_account_name(&name)?;
 
     let mut store = read_store(&app)?;
     let list = match service.as_str() {
@@ -1103,11 +1215,14 @@ fn save_account(app: AppHandle, payload: SaveAccountPayload) -> Result<AccountSn
         });
     }
 
-    if let Some(token) = payload.token.as_deref() {
-        let trimmed = token.trim();
+    if let Some(mut token_input) = payload.token.take() {
+        let mut trimmed = token_input.trim().to_string();
         if !trimmed.is_empty() {
-            set_token(&service, &id, trimmed)?;
+            validate_token(&trimmed)?;
+            set_token(&service, &id, &trimmed)?;
         }
+        trimmed.zeroize();
+        token_input.zeroize();
     }
 
     if payload.clear_token.unwrap_or(false) {
@@ -1129,9 +1244,7 @@ fn delete_account(app: AppHandle, payload: DeleteAccountPayload) -> Result<ApiOk
     ensure_service(&service)?;
 
     let id = sanitize_string(payload.id.as_deref(), "");
-    if id.is_empty() {
-        return Err("Account id is required".to_string());
-    }
+    validate_account_id(&id)?;
 
     let mut store = read_store(&app)?;
     let list = match service.as_str() {
@@ -1217,17 +1330,17 @@ fn set_polling_state(app: AppHandle, payload: SetPollingStatePayload) -> Result<
 }
 
 #[tauri::command]
-async fn fetch_usage(app: AppHandle, payload: FetchUsagePayload) -> Result<FetchUsageResponse, String> {
+async fn fetch_usage(app: AppHandle, mut payload: FetchUsagePayload) -> Result<FetchUsageResponse, String> {
     let service = sanitize_string(payload.service.as_deref(), "");
     ensure_service(&service)?;
 
     let id = sanitize_string(payload.id.as_deref(), "");
-    if id.is_empty() {
-        return Err("Account id is required".to_string());
-    }
+    validate_account_id(&id)?;
+    enforce_fetch_usage_rate_limit(&service, &id)?;
 
     let fallback_name = format!("{} {}", service.to_uppercase(), id);
     let name = sanitize_string(payload.name.as_deref(), &fallback_name);
+    validate_account_name(&name)?;
 
     let mut store = read_store(&app)?;
     let list = match service.as_str() {
@@ -1247,17 +1360,23 @@ async fn fetch_usage(app: AppHandle, payload: FetchUsagePayload) -> Result<Fetch
         });
     }
 
-    if let Some(token) = payload.token.as_deref() {
-        let trimmed = token.trim();
+    if let Some(mut token_input) = payload.token.take() {
+        let mut trimmed = token_input.trim().to_string();
         if !trimmed.is_empty() {
-            set_token(&service, &id, trimmed)?;
+            validate_token(&trimmed)?;
+            set_token(&service, &id, &trimmed)?;
         }
+        trimmed.zeroize();
+        token_input.zeroize();
     }
 
     write_store(&app, &store)?;
 
-    let token = get_token(&service, &id).ok_or_else(|| "Token is not set for this account".to_string())?;
-    fetch_normalized_usage(&service, &token).await
+    let mut token = get_token(&service, &id)
+        .ok_or_else(|| "Token is not set for this account".to_string())?;
+    let fetch_result = fetch_normalized_usage(&service, &token).await;
+    token.zeroize();
+    fetch_result
 }
 
 #[tauri::command]
@@ -1436,4 +1555,46 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn validate_token_rejects_control_chars() {
+        assert!(validate_token("abc\ndef").is_err());
+    }
+
+    #[test]
+    fn validate_token_accepts_common_jwt_format() {
+        assert!(validate_token("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abc_xyz-123/456").is_ok());
+    }
+
+    #[test]
+    fn validate_account_id_rejects_unsupported_characters() {
+        assert!(validate_account_id("abc:def").is_err());
+    }
+
+    #[test]
+    fn build_error_returns_sanitized_message() {
+        assert_eq!(
+            build_error(401, "application/json"),
+            "Authentication failed (HTTP 401)"
+        );
+    }
+
+    #[test]
+    fn rate_limit_blocks_immediate_repeat() {
+        let unique_id = format!(
+            "t{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock drift")
+                .as_nanos()
+        );
+        assert!(enforce_fetch_usage_rate_limit("claude", &unique_id).is_ok());
+        assert!(enforce_fetch_usage_rate_limit("claude", &unique_id).is_err());
+    }
 }

@@ -3,10 +3,10 @@ const assert = require('node:assert/strict');
 
 const { buildError, createUsageService } = require('../../src/core/usage-service');
 
-test('buildError prioritizes upstream error fields', () => {
+test('buildError returns sanitized status-based messages', () => {
   const raw = { status: 400, contentType: 'application/json' };
-  assert.equal(buildError(raw, { error: 'token invalid' }), 'token invalid');
-  assert.equal(buildError(raw, { detail: 'bad request' }), 'bad request');
+  assert.equal(buildError(raw, { error: 'token invalid' }), 'Upstream rejected request (HTTP 400)');
+  assert.equal(buildError({ status: 401, contentType: 'application/json' }, { detail: 'bad request' }), 'Authentication failed (HTTP 401)');
 });
 
 test('buildError maps html 403 to edge block message', () => {
@@ -70,7 +70,7 @@ test('fetchNormalizedUsage throws for unsupported service', async () => {
   );
 });
 
-test('fetchNormalizedUsage surfaces upstream error message from JSON', async () => {
+test('fetchNormalizedUsage surfaces sanitized upstream status message', async () => {
   const svc = createUsageService({
     fetchClaudeUsageRaw: async () => ({
       ok: false,
@@ -83,7 +83,7 @@ test('fetchNormalizedUsage surfaces upstream error message from JSON', async () 
 
   await assert.rejects(
     () => svc.fetchNormalizedUsage('claude', 'bad-token'),
-    /invalid token/
+    /Authentication failed \(HTTP 401\)/
   );
 });
 
