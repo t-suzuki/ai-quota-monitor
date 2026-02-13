@@ -148,10 +148,61 @@ pub fn delete_token(service: &str, id: &str) -> AppResult<()> {
         first_error.get_or_insert(e);
     }
 
+    // Also clean up refresh token and expiry metadata
+    let _ = delete_key(&refresh_token_key(service, id));
+    let _ = delete_key(&expires_at_key(service, id));
+
     match first_error {
         Some(e) => Err(e),
         None => Ok(()),
     }
+}
+
+// ── Refresh token & expiry helpers ──
+
+fn refresh_token_key(service: &str, id: &str) -> String {
+    format!("{service}:{id}:refresh")
+}
+
+fn expires_at_key(service: &str, id: &str) -> String {
+    format!("{service}:{id}:expires")
+}
+
+pub fn get_refresh_token(service: &str, id: &str) -> Option<String> {
+    let key = refresh_token_key(service, id);
+    if let Some(token) = restore_chunked_token(&key) {
+        return Some(token);
+    }
+    let entry = keyring::Entry::new(crate::APP_NAME, &key).ok()?;
+    entry.get_password().ok()
+}
+
+pub fn set_refresh_token(service: &str, id: &str, token: &str) -> AppResult<()> {
+    let key = refresh_token_key(service, id);
+    let _ = delete_key(&key);
+    let entry = open_entry(&key)?;
+    entry
+        .set_password(token)
+        .map_err(|e| AppError::Keyring(format!("Failed to store refresh token: {e}")))
+}
+
+pub fn delete_refresh_token(service: &str, id: &str) -> AppResult<()> {
+    delete_key(&refresh_token_key(service, id))
+}
+
+pub fn get_expires_at(service: &str, id: &str) -> Option<i64> {
+    let key = expires_at_key(service, id);
+    let entry = keyring::Entry::new(crate::APP_NAME, &key).ok()?;
+    let val = entry.get_password().ok()?;
+    val.parse::<i64>().ok()
+}
+
+pub fn set_expires_at(service: &str, id: &str, epoch_ms: i64) -> AppResult<()> {
+    let key = expires_at_key(service, id);
+    let entry = open_entry(&key)?;
+    entry
+        .set_password(&epoch_ms.to_string())
+        .map_err(|e| AppError::Keyring(format!("Failed to store token expiry: {e}")))
 }
 
 #[cfg(test)]

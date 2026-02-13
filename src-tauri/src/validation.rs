@@ -93,7 +93,7 @@ pub fn validate_upstream_url(url: &str) -> AppResult<()> {
         .host_str()
         .ok_or_else(|| AppError::InvalidInput("Upstream URL must include host".to_string()))?;
     match host {
-        "api.anthropic.com" | "chatgpt.com" => Ok(()),
+        "api.anthropic.com" | "chatgpt.com" | "console.anthropic.com" | "auth.openai.com" | "claude.ai" => Ok(()),
         _ => Err(AppError::InvalidInput(
             "Upstream host is not allowlisted".to_string(),
         )),

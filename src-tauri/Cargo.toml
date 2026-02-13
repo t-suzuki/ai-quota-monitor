@@ -15,5 +15,12 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 keyring = "2"
 tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
+tauri-plugin-shell = "2"
 zeroize = "1"
 thiserror = "1"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros"] }
+url = "2"
+open = "5"

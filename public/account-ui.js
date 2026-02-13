@@ -17,6 +17,7 @@
       normalizeAccountToken,
       queuePersistSetup,
       deleteAccount,
+      oauthLogin,
       log,
       makeId,
     } = deps;
@@ -85,7 +86,9 @@
         row.innerHTML = `
           <input class="account-name" type="text" maxlength="256" placeholder="表示名" value="${escHtml(acc.name || '')}">
           <input class="account-token" type="password" maxlength="16384" autocomplete="off" placeholder="eyJhbG... / sk-..." value="${escHtml(tokenView.tokenValue)}">
+          <button class="btn-mini btn-oauth-login" type="button" title="OAuth ログイン">🔐 ログイン</button>
           <button class="btn-mini btn-remove-account" type="button">削除</button>
+          <span class="oauth-status" data-status=""></span>
         `;
 
         row.querySelector('.btn-remove-account').addEventListener('click', async () => {
@@ -104,6 +107,39 @@
           row.remove();
           if (!list.querySelector('.account-row')) addAccountRow(service);
           queuePersistSetup();
+        });
+
+        row.querySelector('.btn-oauth-login').addEventListener('click', async () => {
+          const acc = accountFromRow(row);
+          const statusEl = row.querySelector('.oauth-status');
+          const loginBtn = row.querySelector('.btn-oauth-login');
+          statusEl.textContent = 'ブラウザを開いています...';
+          statusEl.dataset.status = 'pending';
+          loginBtn.disabled = true;
+          try {
+            const result = await oauthLogin({ service, id: acc.id });
+            if (result.success) {
+              statusEl.textContent = 'ログイン成功';
+              statusEl.dataset.status = 'ok';
+              row.dataset.hasToken = '1';
+              const tokenInput = row.querySelector('.account-token');
+              if (tokenInput) {
+                tokenInput.value = savedTokenMask;
+                row.dataset.tokenMasked = '1';
+              }
+              queuePersistSetup();
+            } else {
+              statusEl.textContent = result.message || 'ログイン失敗';
+              statusEl.dataset.status = 'error';
+            }
+          } catch (e) {
+            const msg = e && typeof e === 'string' ? e : (e?.message || String(e));
+            statusEl.textContent = msg;
+            statusEl.dataset.status = 'error';
+            log(`OAuth ログインエラー (${serviceMeta[service].label}): ${msg}`, 'warn');
+          } finally {
+            loginBtn.disabled = false;
+          }
         });
 
         row.querySelector('.account-name').addEventListener('input', queuePersistSetup);

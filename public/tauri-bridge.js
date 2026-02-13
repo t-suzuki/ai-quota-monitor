@@ -23,5 +23,9 @@
     setWindowPosition: (payload) => call('set_window_position', { payload }),
     sendNotification: (payload) => call('send_notification', { payload }),
     getVersion: () => call('get_version'),
+    oauthLogin: (payload) => call('oauth_login', { payload }),
+    cancelOauthLogin: () => call('cancel_oauth_login'),
+    refreshToken: (payload) => call('refresh_token', { payload }),
+    getTokenStatus: (payload) => call('get_token_status', { payload }),
   };
 }(typeof window !== 'undefined' ? window : globalThis));
