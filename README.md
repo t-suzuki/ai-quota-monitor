@@ -65,6 +65,8 @@ npm test
 npm run build:tauri
 ```
 
+Windows では `src-tauri/target/release/bundle/` に NSIS / MSI インストーラが出力される。
+
 ## トークン取得方法
 
 ### Claude Code
