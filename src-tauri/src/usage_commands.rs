@@ -1,4 +1,5 @@
 use crate::api_client::{fetch_normalized_usage, FetchUsageResponse};
+use crate::error::{AppError, AppResult};
 use crate::store_repo::{read_store, write_store};
 use crate::token_store::{ensure_service, get_token, set_token};
 use crate::validation::{
@@ -10,7 +11,7 @@ use zeroize::Zeroize;
 pub async fn fetch_usage(
     app: AppHandle,
     mut payload: crate::FetchUsagePayload,
-) -> Result<FetchUsageResponse, String> {
+) -> AppResult<FetchUsageResponse> {
     let service = crate::sanitize_string(payload.service.as_deref(), "");
     ensure_service(&service)?;
 
@@ -26,7 +27,7 @@ pub async fn fetch_usage(
     let list = match service.as_str() {
         "claude" => &mut store.services.claude,
         "codex" => &mut store.services.codex,
-        _ => return Err("Unsupported service".to_string()),
+        _ => return Err(AppError::UnsupportedService),
     };
 
     if let Some(existing) = list.iter_mut().find(|x| x.id == id) {
@@ -53,8 +54,8 @@ pub async fn fetch_usage(
     write_store(&app, &store)?;
 
     let mut token = get_token(&service, &id)
-        .ok_or_else(|| "Token is not set for this account".to_string())?;
+        .ok_or_else(|| AppError::InvalidInput("Token is not set for this account".to_string()))?;
     let fetch_result = fetch_normalized_usage(&service, &token, crate::ANTHROPIC_OAUTH_BETA).await;
     token.zeroize();
-    fetch_result.map_err(|e| e.to_string())
+    fetch_result.map_err(AppError::from)
 }

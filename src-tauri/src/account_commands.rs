@@ -1,10 +1,11 @@
 use crate::store_repo::{read_store, write_store};
 use crate::token_store::{delete_token, ensure_service, get_token, set_token};
+use crate::error::{AppError, AppResult};
 use crate::validation::{validate_account_id, validate_account_name, validate_token};
 use tauri::AppHandle;
 use zeroize::Zeroize;
 
-pub fn list_accounts(app: AppHandle) -> Result<crate::AccountsSnapshot, String> {
+pub fn list_accounts(app: AppHandle) -> AppResult<crate::AccountsSnapshot> {
     let store = read_store(&app)?;
 
     let map_accounts = |service: &str, accounts: &[crate::AccountEntry]| {
@@ -45,7 +46,7 @@ pub fn list_accounts(app: AppHandle) -> Result<crate::AccountsSnapshot, String> 
 pub fn save_account(
     app: AppHandle,
     mut payload: crate::SaveAccountPayload,
-) -> Result<crate::AccountSnapshotEntry, String> {
+) -> AppResult<crate::AccountSnapshotEntry> {
     let service = crate::sanitize_string(payload.service.as_deref(), "");
     ensure_service(&service)?;
 
@@ -60,7 +61,7 @@ pub fn save_account(
     let list = match service.as_str() {
         "claude" => &mut store.services.claude,
         "codex" => &mut store.services.codex,
-        _ => return Err("Unsupported service".to_string()),
+        _ => return Err(AppError::UnsupportedService),
     };
 
     if let Some(existing) = list.iter_mut().find(|x| x.id == id) {
@@ -95,7 +96,7 @@ pub fn save_account(
     })
 }
 
-pub fn delete_account(app: AppHandle, payload: crate::DeleteAccountPayload) -> Result<crate::ApiOk, String> {
+pub fn delete_account(app: AppHandle, payload: crate::DeleteAccountPayload) -> AppResult<crate::ApiOk> {
     let service = crate::sanitize_string(payload.service.as_deref(), "");
     ensure_service(&service)?;
 
@@ -106,7 +107,7 @@ pub fn delete_account(app: AppHandle, payload: crate::DeleteAccountPayload) -> R
     let list = match service.as_str() {
         "claude" => &mut store.services.claude,
         "codex" => &mut store.services.codex,
-        _ => return Err("Unsupported service".to_string()),
+        _ => return Err(AppError::UnsupportedService),
     };
 
     list.retain(|x| x.id != id);

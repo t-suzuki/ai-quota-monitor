@@ -1,13 +1,14 @@
 use tauri::{LogicalPosition, LogicalSize, Position, Size, WebviewWindow};
+use crate::error::{AppError, AppResult};
 
-pub fn current_window_bounds(window: &WebviewWindow) -> Result<crate::Bounds, String> {
+pub fn current_window_bounds(window: &WebviewWindow) -> AppResult<crate::Bounds> {
     let scale_factor = window
         .scale_factor()
-        .map_err(|e| format!("Failed to read window scale factor: {e}"))?;
+        .map_err(|e| AppError::Window(format!("Failed to read window scale factor: {e}")))?;
 
     let size = window
         .inner_size()
-        .map_err(|e| format!("Failed to read window size: {e}"))?;
+        .map_err(|e| AppError::Window(format!("Failed to read window size: {e}")))?;
     let logical_size = size.to_logical::<f64>(scale_factor);
     let mut bounds = crate::Bounds {
         width: logical_size.width.round() as i32,
@@ -23,19 +24,19 @@ pub fn current_window_bounds(window: &WebviewWindow) -> Result<crate::Bounds, St
     Ok(bounds)
 }
 
-pub fn set_window_size(window: &WebviewWindow, width: i32, height: i32) -> Result<(), String> {
+pub fn set_window_size(window: &WebviewWindow, width: i32, height: i32) -> AppResult<()> {
     window
         .set_size(Size::Logical(LogicalSize::new(width as f64, height as f64)))
-        .map_err(|e| format!("Failed to set window size: {e}"))
+        .map_err(|e| AppError::Window(format!("Failed to set window size: {e}")))
 }
 
-pub fn set_window_position_inner(window: &WebviewWindow, x: i32, y: i32) -> Result<(), String> {
+pub fn set_window_position_inner(window: &WebviewWindow, x: i32, y: i32) -> AppResult<()> {
     window
         .set_position(Position::Logical(LogicalPosition::new(x as f64, y as f64)))
-        .map_err(|e| format!("Failed to set window position: {e}"))
+        .map_err(|e| AppError::Window(format!("Failed to set window position: {e}")))
 }
 
-pub fn apply_window_mode(window: &WebviewWindow, ws: &crate::WindowState) -> Result<(), String> {
+pub fn apply_window_mode(window: &WebviewWindow, ws: &crate::WindowState) -> AppResult<()> {
     let is_minimal = ws.mode == "minimal";
     let min_width = if is_minimal {
         ws.minimal_min_width
@@ -67,14 +68,14 @@ pub fn apply_window_mode(window: &WebviewWindow, ws: &crate::WindowState) -> Res
             min_width as f64,
             min_height as f64,
         ))))
-        .map_err(|e| format!("Failed to set minimum window size: {e}"))?;
+        .map_err(|e| AppError::Window(format!("Failed to set minimum window size: {e}")))?;
 
     window
         .set_decorations(!is_minimal)
-        .map_err(|e| format!("Failed to update window decorations: {e}"))?;
+        .map_err(|e| AppError::Window(format!("Failed to update window decorations: {e}")))?;
     window
         .set_always_on_top(is_minimal)
-        .map_err(|e| format!("Failed to update always-on-top: {e}"))?;
+        .map_err(|e| AppError::Window(format!("Failed to update always-on-top: {e}")))?;
 
     set_window_size(window, bounds.width, bounds.height)?;
 

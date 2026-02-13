@@ -1,4 +1,5 @@
 use crate::validation::{validate_account_id, validate_account_name};
+use crate::error::{AppError, AppResult};
 use tauri::{AppHandle, Manager};
 use std::fs;
 use std::path::PathBuf;
@@ -239,12 +240,13 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
     }
 }
 
-fn store_path(app: &AppHandle) -> Result<PathBuf, String> {
+fn store_path(app: &AppHandle) -> AppResult<PathBuf> {
     let mut dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| format!("Failed to resolve app data directory: {e}"))?;
-    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create app data directory: {e}"))?;
+        .map_err(|e| AppError::Store(format!("Failed to resolve app data directory: {e}")))?;
+    fs::create_dir_all(&dir)
+        .map_err(|e| AppError::Store(format!("Failed to create app data directory: {e}")))?;
     dir.push(crate::STORE_FILE);
     Ok(dir)
 }
@@ -253,10 +255,10 @@ fn store_cache() -> &'static Mutex<Option<crate::Store>> {
     STORE_CACHE.get_or_init(|| Mutex::new(None))
 }
 
-pub fn read_store(app: &AppHandle) -> Result<crate::Store, String> {
+pub fn read_store(app: &AppHandle) -> AppResult<crate::Store> {
     if let Some(cached) = store_cache()
         .lock()
-        .map_err(|_| "Store cache lock is poisoned".to_string())?
+        .map_err(|_| AppError::Store("Store cache lock is poisoned".to_string()))?
         .as_ref()
         .cloned()
     {
@@ -270,7 +272,7 @@ pub fn read_store(app: &AppHandle) -> Result<crate::Store, String> {
             let fallback = default_store();
             let mut cache = store_cache()
                 .lock()
-                .map_err(|_| "Store cache lock is poisoned".to_string())?;
+                .map_err(|_| AppError::Store("Store cache lock is poisoned".to_string()))?;
             if cache.is_none() {
                 *cache = Some(fallback.clone());
             }
@@ -284,7 +286,7 @@ pub fn read_store(app: &AppHandle) -> Result<crate::Store, String> {
             let fallback = default_store();
             let mut cache = store_cache()
                 .lock()
-                .map_err(|_| "Store cache lock is poisoned".to_string())?;
+                .map_err(|_| AppError::Store("Store cache lock is poisoned".to_string()))?;
             if cache.is_none() {
                 *cache = Some(fallback.clone());
             }
@@ -295,7 +297,7 @@ pub fn read_store(app: &AppHandle) -> Result<crate::Store, String> {
     let normalized = normalize_store(parsed);
     let mut cache = store_cache()
         .lock()
-        .map_err(|_| "Store cache lock is poisoned".to_string())?;
+        .map_err(|_| AppError::Store("Store cache lock is poisoned".to_string()))?;
     if let Some(existing) = cache.as_ref() {
         return Ok(existing.clone());
     }
@@ -303,14 +305,14 @@ pub fn read_store(app: &AppHandle) -> Result<crate::Store, String> {
     Ok(normalized)
 }
 
-pub fn write_store(app: &AppHandle, store: &crate::Store) -> Result<(), String> {
+pub fn write_store(app: &AppHandle, store: &crate::Store) -> AppResult<()> {
     let path = store_path(app)?;
     let body = serde_json::to_string_pretty(store)
-        .map_err(|e| format!("Failed to serialize store: {e}"))?;
-    fs::write(path, body).map_err(|e| format!("Failed to write store: {e}"))?;
+        .map_err(|e| AppError::Store(format!("Failed to serialize store: {e}")))?;
+    fs::write(path, body).map_err(|e| AppError::Store(format!("Failed to write store: {e}")))?;
     let mut cache = store_cache()
         .lock()
-        .map_err(|_| "Store cache lock is poisoned".to_string())?;
+        .map_err(|_| AppError::Store("Store cache lock is poisoned".to_string()))?;
     *cache = Some(store.clone());
     Ok(())
 }

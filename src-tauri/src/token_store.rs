@@ -1,7 +1,9 @@
-pub fn ensure_service(service: &str) -> Result<(), String> {
+use crate::error::{AppError, AppResult};
+
+pub fn ensure_service(service: &str) -> AppResult<()> {
     match service {
         "claude" | "codex" => Ok(()),
-        _ => Err("Unsupported service".to_string()),
+        _ => Err(AppError::UnsupportedService),
     }
 }
 
@@ -14,20 +16,22 @@ pub fn get_token(service: &str, id: &str) -> Option<String> {
     entry.get_password().ok()
 }
 
-pub fn set_token(service: &str, id: &str, token: &str) -> Result<(), String> {
+pub fn set_token(service: &str, id: &str, token: &str) -> AppResult<()> {
     let entry = keyring::Entry::new(crate::APP_NAME, &token_key(service, id))
-        .map_err(|e| format!("Failed to open keyring entry: {e}"))?;
+        .map_err(|e| AppError::Keyring(format!("Failed to open keyring entry: {e}")))?;
     entry
         .set_password(token)
-        .map_err(|e| format!("Failed to store token in keyring: {e}"))
+        .map_err(|e| AppError::Keyring(format!("Failed to store token in keyring: {e}")))
 }
 
-pub fn delete_token(service: &str, id: &str) -> Result<(), String> {
+pub fn delete_token(service: &str, id: &str) -> AppResult<()> {
     let entry = keyring::Entry::new(crate::APP_NAME, &token_key(service, id))
-        .map_err(|e| format!("Failed to open keyring entry: {e}"))?;
+        .map_err(|e| AppError::Keyring(format!("Failed to open keyring entry: {e}")))?;
     match entry.delete_password() {
         Ok(_) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("Failed to delete token from keyring: {e}")),
+        Err(e) => Err(AppError::Keyring(format!(
+            "Failed to delete token from keyring: {e}"
+        ))),
     }
 }

@@ -59,7 +59,7 @@ pub(crate) fn build_error_message(status: u16, content_type: &str) -> String {
 }
 
 async fn fetch_usage_raw(url: &str, headers: HeaderMap) -> Result<RawUpstream, ApiError> {
-    validate_upstream_url(url).map_err(ApiError::Validation)?;
+    validate_upstream_url(url).map_err(|e| ApiError::Validation(e.to_string()))?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
         .redirect(reqwest::redirect::Policy::none())
@@ -92,7 +92,7 @@ async fn fetch_usage_raw(url: &str, headers: HeaderMap) -> Result<RawUpstream, A
 
 async fn fetch_claude_usage_raw(token: &str, anthropic_oauth_beta: &str) -> Result<RawUpstream, ApiError> {
     let token = token.trim();
-    validate_token(token).map_err(ApiError::Validation)?;
+    validate_token(token).map_err(|e| ApiError::Validation(e.to_string()))?;
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -112,7 +112,7 @@ async fn fetch_claude_usage_raw(token: &str, anthropic_oauth_beta: &str) -> Resu
 
 async fn fetch_codex_usage_raw(token: &str) -> Result<RawUpstream, ApiError> {
     let token = token.trim();
-    validate_token(token).map_err(ApiError::Validation)?;
+    validate_token(token).map_err(|e| ApiError::Validation(e.to_string()))?;
 
     let mut headers = HeaderMap::new();
     headers.insert(

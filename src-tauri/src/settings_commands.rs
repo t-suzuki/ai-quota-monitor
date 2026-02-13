@@ -1,11 +1,12 @@
 use crate::store_repo::{read_store, write_store};
+use crate::error::AppResult;
 use tauri::AppHandle;
 
-pub fn get_settings(app: AppHandle) -> Result<crate::Settings, String> {
+pub fn get_settings(app: AppHandle) -> AppResult<crate::Settings> {
     Ok(read_store(&app)?.settings)
 }
 
-pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> Result<crate::Settings, String> {
+pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> AppResult<crate::Settings> {
     let mut store = read_store(&app)?;
 
     if let Some(poll_interval) = payload.poll_interval {
@@ -44,14 +45,14 @@ pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> Resul
     Ok(store.settings)
 }
 
-pub fn get_polling_state(app: AppHandle) -> Result<crate::PollingState, String> {
+pub fn get_polling_state(app: AppHandle) -> AppResult<crate::PollingState> {
     Ok(read_store(&app)?.settings.polling_state)
 }
 
 pub fn set_polling_state(
     app: AppHandle,
     payload: crate::SetPollingStatePayload,
-) -> Result<crate::PollingState, String> {
+) -> AppResult<crate::PollingState> {
     let mut store = read_store(&app)?;
     let current = &mut store.settings.polling_state;
 

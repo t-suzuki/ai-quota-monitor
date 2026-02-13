@@ -22,6 +22,21 @@ const THRESHOLDS_EXHAUSTED = 100;
 const POLL_RING_TICK_MS = 1000;
 const SETUP_PERSIST_DEBOUNCE_MS = 200;
 const HISTORY_RESET_DROP_PCT = 5;
+const COPY_FEEDBACK_MS = 1500;
+const MAX_LOG_ENTRIES = 200;
+const MAX_RENDERED_LOGS = 50;
+const HISTORY_MAX_POINTS = 10;
+const POLL_INTERVAL_MIN_SEC = 30;
+const POLL_INTERVAL_DEFAULT_SEC = 120;
+const NOTIFY_THRESHOLD_MIN = 1;
+const NOTIFY_THRESHOLD_MAX = 99;
+const NOTIFY_THRESHOLD_WARNING_DEFAULT = 75;
+const NOTIFY_THRESHOLD_CRITICAL_DEFAULT = 90;
+const MINIMAL_FALLBACK_CARD_HEIGHT = 240;
+const MINIMAL_MIN_HEIGHT_FLOOR = 220;
+const MINIMAL_WINDOW_MAX_SIZE = 2000;
+const MINIMAL_PREFERRED_HEIGHT_MAX = 4000;
+const MINIMAL_DRAG_EDGE_PX = 8;
 if (!window.quotaApi || window.quotaApi.platform !== 'tauri') {
   throw new Error('Tauri quotaApi bridge is required');
 }
@@ -67,7 +82,7 @@ document.addEventListener('click', e => {
   navigator.clipboard.writeText(code).then(() => {
     btn.textContent = '✓';
     btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = '⧉'; btn.classList.remove('copied'); }, 1500);
+    setTimeout(() => { btn.textContent = '⧉'; btn.classList.remove('copied'); }, COPY_FEEDBACK_MS);
   });
 });
 
@@ -78,7 +93,7 @@ const $ = s => document.querySelector(s);
 const log = (msg, level = '') => {
   const ts = new Date().toLocaleTimeString();
   state.logs.unshift({ ts, msg, level });
-  if (state.logs.length > 200) state.logs.length = 200;
+  if (state.logs.length > MAX_LOG_ENTRIES) state.logs.length = MAX_LOG_ENTRIES;
   renderLogs();
 };
 
@@ -172,7 +187,7 @@ const {
 async function persistSetup() {
   try {
     const accounts = collectAccounts();
-    const interval = Math.max(30, parseInt($('#poll-interval').value, 10) || 120);
+    const interval = Math.max(POLL_INTERVAL_MIN_SEC, parseInt($('#poll-interval').value, 10) || POLL_INTERVAL_DEFAULT_SEC);
 
     for (const service of Object.keys(SERVICE_META)) {
       for (const acc of accounts[service]) {
@@ -307,7 +322,7 @@ function recordHistory(key, utilization) {
   // If utilization dropped significantly (quota reset), clear history
   if (arr.length > 0 && utilization < arr[arr.length - 1] - HISTORY_RESET_DROP_PCT) arr.length = 0;
   arr.push(utilization);
-  if (arr.length > 10) arr.shift();
+  if (arr.length > HISTORY_MAX_POINTS) arr.shift();
 }
 
 function calcElapsedPct(resetsAt, windowSeconds) {
@@ -421,7 +436,7 @@ function render() {
 
 function renderLogs() {
   const el = $('#log-list');
-  el.innerHTML = state.logs.slice(0, 50).map(l =>
+  el.innerHTML = state.logs.slice(0, MAX_RENDERED_LOGS).map(l =>
     `<div class="${l.level}">[${l.ts}] ${escHtml(l.msg)}</div>`
   ).join('');
 }
@@ -458,7 +473,6 @@ function computeMinimalWindowMetrics() {
   const container = document.querySelector('.container');
   const dashboard = $('#dashboard');
   const cards = Array.from(dashboard?.querySelectorAll('.card') || []);
-  const fallbackCardHeight = 240;
 
   const rootStyle = getComputedStyle(document.documentElement);
   const configuredCardWidthRaw = parseFloat(rootStyle.getPropertyValue('--minimal-card-width'));
@@ -469,10 +483,10 @@ function computeMinimalWindowMetrics() {
   const cardHeights = cards.map((card) => card.getBoundingClientRect().height).filter((v) => v > 0);
   const measuredCardWidth = cardWidths.length > 0 ? Math.ceil(Math.max(...cardWidths)) : configuredCardWidth;
   const cardWidth = clamp(measuredCardWidth, MINIMAL_FLOOR_W, Math.ceil(configuredCardWidth));
-  const firstCardHeight = cardHeights.length > 0 ? Math.ceil(cardHeights[0]) : fallbackCardHeight;
+  const firstCardHeight = cardHeights.length > 0 ? Math.ceil(cardHeights[0]) : MINIMAL_FALLBACK_CARD_HEIGHT;
   const totalCardsHeight = cardHeights.length > 0
     ? Math.ceil(cardHeights.reduce((sum, h) => sum + h, 0))
-    : fallbackCardHeight;
+    : MINIMAL_FALLBACK_CARD_HEIGHT;
 
   const containerStyle = container ? getComputedStyle(container) : null;
   const dashboardStyle = dashboard ? getComputedStyle(dashboard) : null;
@@ -486,12 +500,12 @@ function computeMinimalWindowMetrics() {
     ? (parseFloat(dashboardStyle.rowGap) || parseFloat(dashboardStyle.gap) || 0)
     : 0;
 
-  const minWidth = clamp(Math.ceil(cardWidth + paddingX), MINIMAL_FLOOR_W, 2000);
-  const minHeight = clamp(Math.ceil(firstCardHeight + paddingY), 220, 2000);
+  const minWidth = clamp(Math.ceil(cardWidth + paddingX), MINIMAL_FLOOR_W, MINIMAL_WINDOW_MAX_SIZE);
+  const minHeight = clamp(Math.ceil(firstCardHeight + paddingY), MINIMAL_MIN_HEIGHT_FLOOR, MINIMAL_WINDOW_MAX_SIZE);
   const preferredHeight = clamp(
     Math.ceil(totalCardsHeight + (rowGap * Math.max(cards.length - 1, 0)) + paddingY),
     minHeight,
-    4000
+    MINIMAL_PREFERRED_HEIGHT_MAX
   );
 
   return { minWidth, minHeight, preferredWidth: minWidth, preferredHeight };
@@ -536,12 +550,11 @@ function isMinimalDragTarget(target) {
 }
 
 function isNearWindowEdge(event) {
-  const edge = 8;
   return (
-    event.clientX <= edge ||
-    event.clientY <= edge ||
-    event.clientX >= window.innerWidth - edge ||
-    event.clientY >= window.innerHeight - edge
+    event.clientX <= MINIMAL_DRAG_EDGE_PX ||
+    event.clientY <= MINIMAL_DRAG_EDGE_PX ||
+    event.clientX >= window.innerWidth - MINIMAL_DRAG_EDGE_PX ||
+    event.clientY >= window.innerHeight - MINIMAL_DRAG_EDGE_PX
   );
 }
 
@@ -609,7 +622,7 @@ async function runPollCycle() {
 
 function startPolling() {
   stopPolling(false);
-  const intervalSec = Math.max(30, parseInt($('#poll-interval').value, 10) || 120);
+  const intervalSec = Math.max(POLL_INTERVAL_MIN_SEC, parseInt($('#poll-interval').value, 10) || POLL_INTERVAL_DEFAULT_SEC);
   state.polling = true;
   state.pollInterval = intervalSec;
   state.pollStartedAt = Date.now();
@@ -803,8 +816,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.notifySettings.critical = $('#notify-critical').checked;
     state.notifySettings.recovery = $('#notify-recovery').checked;
     state.notifySettings.warning = $('#notify-warning').checked;
-    state.notifySettings.thresholdWarning = Math.max(1, Math.min(99, parseInt($('#threshold-warning').value, 10) || 75));
-    state.notifySettings.thresholdCritical = Math.max(1, Math.min(99, parseInt($('#threshold-critical').value, 10) || 90));
+    state.notifySettings.thresholdWarning = Math.max(
+      NOTIFY_THRESHOLD_MIN,
+      Math.min(
+        NOTIFY_THRESHOLD_MAX,
+        parseInt($('#threshold-warning').value, 10) || NOTIFY_THRESHOLD_WARNING_DEFAULT
+      )
+    );
+    state.notifySettings.thresholdCritical = Math.max(
+      NOTIFY_THRESHOLD_MIN,
+      Math.min(
+        NOTIFY_THRESHOLD_MAX,
+        parseInt($('#threshold-critical').value, 10) || NOTIFY_THRESHOLD_CRITICAL_DEFAULT
+      )
+    );
     window.quotaApi.setSettings({ notifySettings: state.notifySettings }).catch(() => {});
     reclassifyAllServices();
     render();

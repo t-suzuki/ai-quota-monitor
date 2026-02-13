@@ -482,6 +482,29 @@ S-3 の残課題:
 - [ ] **`main.rs` のモジュール分割（最終整理: コマンド集約構成の整理）**
 - [ ] **型付きエラーの全体展開（store/window/command 入出力まで）**
 
+### 2026-02-13 11回目更新
+
+追加対応:
+- [x] **`main.rs` 分割の最終整理（コマンド集約）**  
+  `tauri::command` ラッパーを `src-tauri/src/commands.rs` に集約し、`main.rs` は起動処理と型定義中心へ整理。  
+  `main.rs` を約 427 行 → 約 347 行まで削減。
+- [x] **型付きエラーの全体展開（内部層）**  
+  `src-tauri/src/error.rs` を追加し、`AppError` / `AppResult` を導入。  
+  `store_repo` / `token_store` / `validation` / `window_ops` / 各 command 実装を `Result<_, String>` から `AppResult<_>` へ移行。  
+  Tauri コマンド境界（`commands.rs`）でのみ `String` へ変換してフロント互換を維持。
+- [x] **`cargo test` でのビルドエラー修正**  
+  `src-tauri/src/store_repo.rs` に `tauri::Manager` import を追加し、`AppHandle::path()` 解決エラー（E0599）へ対応。
+
+継続事項:
+- [x] **今回の継続対象（`main.rs` 分割最終整理 / 型付きエラー全体展開）は完了**
+
+### 2026-02-13 12回目更新
+
+追加対応:
+- [x] **`app.js` のマジックナンバー整理（中）**  
+  `public/app.js` の主要リテラル値（ポーリング間隔下限/既定値、履歴上限、ログ表示上限、通知しきい値、ミニマルウィンドウ寸法上限、ドラッグ境界など）を定数化。  
+  挙動は維持しつつ、チューニング箇所の一元化と可読性を改善。
+
 ---
 
 *以上*

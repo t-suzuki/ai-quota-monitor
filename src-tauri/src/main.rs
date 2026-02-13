@@ -1,25 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use api_client::FetchUsageResponse;
-use account_commands::{
-    delete_account as delete_account_impl, list_accounts as list_accounts_impl,
-    save_account as save_account_impl,
-};
 use serde::{Deserialize, Serialize};
-use settings_commands::{
-    get_polling_state as get_polling_state_impl, get_settings as get_settings_impl,
-    set_polling_state as set_polling_state_impl, set_settings as set_settings_impl,
-};
 use store_repo::{read_store, write_store};
-use tauri::{AppHandle, Manager, WebviewWindow};
-use usage_commands::fetch_usage as fetch_usage_impl;
-use window_commands::{
-    get_window_state as get_window_state_impl, set_window_mode as set_window_mode_impl,
-    set_window_position as set_window_position_impl,
-};
+use tauri::Manager;
 use window_ops::apply_window_mode;
 mod api_client;
 mod account_commands;
+mod commands;
+mod error;
 mod settings_commands;
 mod store_repo;
 mod token_store;
@@ -277,74 +265,6 @@ fn sanitize_string(input: Option<&str>, fallback: &str) -> String {
     }
 }
 
-#[tauri::command]
-fn list_accounts(app: AppHandle) -> Result<AccountsSnapshot, String> {
-    list_accounts_impl(app)
-}
-
-#[tauri::command]
-fn save_account(app: AppHandle, payload: SaveAccountPayload) -> Result<AccountSnapshotEntry, String> {
-    save_account_impl(app, payload)
-}
-
-#[tauri::command]
-fn delete_account(app: AppHandle, payload: DeleteAccountPayload) -> Result<ApiOk, String> {
-    delete_account_impl(app, payload)
-}
-
-#[tauri::command]
-fn get_settings(app: AppHandle) -> Result<Settings, String> {
-    get_settings_impl(app)
-}
-
-#[tauri::command]
-fn set_settings(app: AppHandle, payload: SetSettingsPayload) -> Result<Settings, String> {
-    set_settings_impl(app, payload)
-}
-
-#[tauri::command]
-fn get_polling_state(app: AppHandle) -> Result<PollingState, String> {
-    get_polling_state_impl(app)
-}
-
-#[tauri::command]
-fn set_polling_state(app: AppHandle, payload: SetPollingStatePayload) -> Result<PollingState, String> {
-    set_polling_state_impl(app, payload)
-}
-
-#[tauri::command]
-async fn fetch_usage(app: AppHandle, payload: FetchUsagePayload) -> Result<FetchUsageResponse, String> {
-    fetch_usage_impl(app, payload).await
-}
-
-#[tauri::command]
-fn get_window_state(app: AppHandle) -> Result<WindowState, String> {
-    get_window_state_impl(app)
-}
-
-#[tauri::command]
-fn set_window_mode(
-    app: AppHandle,
-    window: WebviewWindow,
-    payload: SetWindowModePayload,
-) -> Result<WindowState, String> {
-    set_window_mode_impl(app, window, payload)
-}
-
-#[tauri::command]
-fn set_window_position(
-    app: AppHandle,
-    window: WebviewWindow,
-    payload: SetWindowPositionPayload,
-) -> Result<ApiOk, String> {
-    set_window_position_impl(app, window, payload)
-}
-
-#[tauri::command]
-fn get_version(app: AppHandle) -> Result<String, String> {
-    Ok(app.package_info().version.to_string())
-}
-
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -359,18 +279,18 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            list_accounts,
-            save_account,
-            delete_account,
-            get_settings,
-            set_settings,
-            get_polling_state,
-            set_polling_state,
-            fetch_usage,
-            get_window_state,
-            set_window_mode,
-            set_window_position,
-            get_version,
+            commands::list_accounts,
+            commands::save_account,
+            commands::delete_account,
+            commands::get_settings,
+            commands::set_settings,
+            commands::get_polling_state,
+            commands::set_polling_state,
+            commands::fetch_usage,
+            commands::get_window_state,
+            commands::set_window_mode,
+            commands::set_window_position,
+            commands::get_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

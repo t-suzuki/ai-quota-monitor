@@ -1,12 +1,13 @@
 use crate::store_repo::{
     default_minimal_bounds, default_normal_bounds, read_store, sanitize_bounds_live, write_store,
 };
+use crate::error::{AppError, AppResult};
 use crate::window_ops::{
     apply_window_mode, current_window_bounds, set_window_position_inner, set_window_size,
 };
 use tauri::{AppHandle, WebviewWindow};
 
-pub fn get_window_state(app: AppHandle) -> Result<crate::WindowState, String> {
+pub fn get_window_state(app: AppHandle) -> AppResult<crate::WindowState> {
     Ok(read_store(&app)?.settings.window_state)
 }
 
@@ -14,7 +15,7 @@ pub fn set_window_mode(
     app: AppHandle,
     window: WebviewWindow,
     payload: crate::SetWindowModePayload,
-) -> Result<crate::WindowState, String> {
+) -> AppResult<crate::WindowState> {
     let mut store = read_store(&app)?;
     let ws = &mut store.settings.window_state;
 
@@ -85,13 +86,13 @@ pub fn set_window_position(
     app: AppHandle,
     window: WebviewWindow,
     payload: crate::SetWindowPositionPayload,
-) -> Result<crate::ApiOk, String> {
+) -> AppResult<crate::ApiOk> {
     let x = payload
         .x
-        .ok_or_else(|| "x and y are required".to_string())?;
+        .ok_or_else(|| AppError::InvalidInput("x and y are required".to_string()))?;
     let y = payload
         .y
-        .ok_or_else(|| "x and y are required".to_string())?;
+        .ok_or_else(|| AppError::InvalidInput("x and y are required".to_string()))?;
 
     let has_valid_size = match (payload.width, payload.height) {
         (Some(w), Some(h)) if w >= crate::MINIMAL_FLOOR_W && h >= crate::MINIMAL_FLOOR_H => Some((w, h)),
