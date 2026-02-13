@@ -69,14 +69,12 @@ fn sanitize_bounds_raw(
 ) -> crate::Bounds {
     let width = clamp_int(raw.and_then(|x| x.width), fallback.width, min_width, 8192);
     let height = clamp_int(raw.and_then(|x| x.height), fallback.height, min_height, 8192);
-    let x = raw.and_then(|x| x.x);
-    let y = raw.and_then(|x| x.y);
 
     crate::Bounds {
         width,
         height,
-        x,
-        y,
+        x: None,
+        y: None,
     }
 }
 
@@ -92,8 +90,8 @@ pub fn sanitize_bounds_live(
     crate::Bounds {
         width,
         height,
-        x: source.x,
-        y: source.y,
+        x: None,
+        y: None,
     }
 }
 

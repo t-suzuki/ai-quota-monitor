@@ -40,12 +40,11 @@ pub fn set_window_mode(
         if let (Some(preferred_width), Some(preferred_height)) =
             (payload.preferred_width, payload.preferred_height)
         {
-            let current = current_window_bounds(&window).ok();
             let proposed = crate::Bounds {
                 width: preferred_width,
                 height: preferred_height,
-                x: current.as_ref().and_then(|b| b.x),
-                y: current.as_ref().and_then(|b| b.y),
+                x: None,
+                y: None,
             };
             ws.minimal_bounds = Some(sanitize_bounds_live(
                 Some(&proposed),
@@ -56,7 +55,9 @@ pub fn set_window_mode(
         }
     }
 
-    if let Ok(current_bounds) = current_window_bounds(&window) {
+    if let Ok(mut current_bounds) = current_window_bounds(&window) {
+        current_bounds.x = None;
+        current_bounds.y = None;
         if ws.mode == "minimal" {
             ws.minimal_bounds = Some(sanitize_bounds_live(
                 Some(&current_bounds),
@@ -83,7 +84,7 @@ pub fn set_window_mode(
 }
 
 pub fn set_window_position(
-    app: AppHandle,
+    _app: AppHandle,
     window: WebviewWindow,
     payload: crate::SetWindowPositionPayload,
 ) -> AppResult<crate::ApiOk> {
@@ -101,47 +102,8 @@ pub fn set_window_position(
 
     if let Some((w, h)) = has_valid_size {
         set_window_size(&window, w, h)?;
-        set_window_position_inner(&window, x, y)?;
-    } else {
-        set_window_position_inner(&window, x, y)?;
     }
+    set_window_position_inner(&window, x, y)?;
 
-    let mut store = read_store(&app)?;
-    let ws = &mut store.settings.window_state;
-
-    if ws.mode == "minimal" {
-        let mut next = ws
-            .minimal_bounds
-            .clone()
-            .unwrap_or_else(default_minimal_bounds);
-        next.x = Some(x);
-        next.y = Some(y);
-        if let Some((w, h)) = has_valid_size {
-            next.width = w;
-            next.height = h;
-        }
-        ws.minimal_bounds = Some(sanitize_bounds_live(
-            Some(&next),
-            ws.minimal_min_width,
-            ws.minimal_min_height,
-            &default_minimal_bounds(),
-        ));
-    } else {
-        let mut next = ws.normal_bounds.clone();
-        next.x = Some(x);
-        next.y = Some(y);
-        if let Some((w, h)) = has_valid_size {
-            next.width = w;
-            next.height = h;
-        }
-        ws.normal_bounds = sanitize_bounds_live(
-            Some(&next),
-            crate::NORMAL_WINDOW_MIN_W,
-            crate::NORMAL_WINDOW_MIN_H,
-            &default_normal_bounds(),
-        );
-    }
-
-    write_store(&app, &store)?;
     Ok(crate::ApiOk { ok: true })
 }

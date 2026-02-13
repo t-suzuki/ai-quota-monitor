@@ -126,8 +126,6 @@ struct PollingStateRaw {
 struct BoundsRaw {
     width: Option<i32>,
     height: Option<i32>,
-    x: Option<i32>,
-    y: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

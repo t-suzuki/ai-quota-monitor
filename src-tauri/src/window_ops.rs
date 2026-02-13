@@ -1,5 +1,5 @@
-use tauri::{LogicalPosition, LogicalSize, Position, Size, WebviewWindow};
 use crate::error::{AppError, AppResult};
+use tauri::{LogicalPosition, LogicalSize, Position, Size, WebviewWindow};
 
 pub fn current_window_bounds(window: &WebviewWindow) -> AppResult<crate::Bounds> {
     let scale_factor = window
@@ -78,10 +78,6 @@ pub fn apply_window_mode(window: &WebviewWindow, ws: &crate::WindowState) -> App
         .map_err(|e| AppError::Window(format!("Failed to update always-on-top: {e}")))?;
 
     set_window_size(window, bounds.width, bounds.height)?;
-
-    if let (Some(x), Some(y)) = (bounds.x, bounds.y) {
-        set_window_position_inner(window, x, y)?;
-    }
 
     Ok(())
 }
