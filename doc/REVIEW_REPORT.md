@@ -407,6 +407,43 @@ S-3 の残課題:
 未対応（中以上、継続）:
 - [ ] **`main.rs` のモジュール分割 / 型付きエラー化**
 
+### 2026-02-13 5回目更新
+
+追加対応:
+- [x] **`main.rs` 分割を追加で実施（API 層）**  
+  上流通信ロジックを `src-tauri/src/api_client.rs` に移動（`fetch_normalized_usage` / ヘッダー構築 / ステータスエラー整形）。
+- [x] **型付きエラー化を部分導入**  
+  `src-tauri/src/api_client.rs` に `ApiError`（`thiserror`）を導入し、API 層内部は `Result<_, ApiError>` で処理。  
+  Tauri コマンド境界で `String` に変換して既存フロント互換を維持。
+
+未対応（中以上、継続）:
+- [ ] **`main.rs` のモジュール分割（store/window/commands の更なる分離）**
+- [ ] **型付きエラーの全体展開（store/window/command 入出力まで）**
+
+### 2026-02-13 6回目更新
+
+追加対応:
+- [x] **`main.rs` 分割を追加で実施（window 層）**  
+  ウィンドウ操作ロジック（境界取得/サイズ/位置/モード適用）を `src-tauri/src/window_ops.rs` に移動。
+- [x] **`main.rs` をさらに縮小**  
+  `main.rs` を約 1278 行 → 約 1068 行まで削減（API + window + validation + parser の分離）。
+
+未対応（中以上、継続）:
+- [ ] **`main.rs` のモジュール分割（store/commands の更なる分離）**
+- [ ] **型付きエラーの全体展開（store/window/command 入出力まで）**
+
+### 2026-02-13 7回目更新
+
+追加対応:
+- [x] **`main.rs` 分割を追加で実施（token/keyring 層）**  
+  サービス検証と Keyring 操作を `src-tauri/src/token_store.rs` に移動。
+- [x] **`main.rs` をさらに縮小**  
+  `main.rs` を約 1068 行 → 約 1036 行まで削減。
+
+未対応（中以上、継続）:
+- [ ] **`main.rs` のモジュール分割（store/commands の更なる分離）**
+- [ ] **型付きエラーの全体展開（store/window/command 入出力まで）**
+
 ---
 
 *以上*
