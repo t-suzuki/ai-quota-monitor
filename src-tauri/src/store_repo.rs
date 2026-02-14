@@ -57,6 +57,10 @@ fn default_store() -> crate::Store {
                 threshold_warning: 75,
                 threshold_critical: 90,
             },
+            usage_export: crate::UsageExportSettings {
+                enabled: false,
+                path: None,
+            },
         },
     }
 }
@@ -217,6 +221,13 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
         ),
     };
 
+    let export_raw = settings_raw.as_ref().and_then(|s| s.usage_export.as_ref());
+    let export_path = export_raw
+        .and_then(|e| e.path.as_deref())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && crate::validation::validate_export_path(s).is_ok());
+    let export_enabled = export_raw.and_then(|e| e.enabled).unwrap_or(false) && export_path.is_some();
+
     crate::Store {
         services: crate::Services { claude, codex },
         settings: crate::Settings {
@@ -234,6 +245,10 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
                 minimal_min_height,
             },
             notify_settings,
+            usage_export: crate::UsageExportSettings {
+                enabled: export_enabled,
+                path: export_path,
+            },
         },
     }
 }

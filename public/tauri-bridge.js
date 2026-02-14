@@ -15,6 +15,7 @@
     deleteAccount: (payload) => call('delete_account', { payload }),
     getSettings: () => call('get_settings'),
     setSettings: (payload) => call('set_settings', { payload }),
+    writeUsageSnapshot: (payload) => call('write_usage_snapshot', { payload }),
     getPollingState: () => call('get_polling_state'),
     setPollingState: (payload) => call('set_polling_state', { payload }),
     fetchUsage: (payload) => call('fetch_usage', { payload }),

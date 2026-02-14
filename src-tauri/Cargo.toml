@@ -16,6 +16,7 @@ keyring = "2"
 tauri = { version = "2", features = [] }
 tauri-plugin-notification = "2"
 tauri-plugin-shell = "2"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 zeroize = "1"
 thiserror = "1"
 sha2 = "0.10"

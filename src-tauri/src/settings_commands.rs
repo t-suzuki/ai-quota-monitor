@@ -1,5 +1,6 @@
 use crate::store_repo::{read_store, write_store};
 use crate::error::AppResult;
+use crate::validation::validate_export_path;
 use tauri::AppHandle;
 
 pub fn get_settings(app: AppHandle) -> AppResult<crate::Settings> {
@@ -38,6 +39,25 @@ pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> AppRe
             if (1..=99).contains(&v) {
                 current.threshold_critical = v;
             }
+        }
+    }
+
+    if let Some(es) = payload.usage_export {
+        let current = &mut store.settings.usage_export;
+        if let Some(v) = es.enabled {
+            current.enabled = v;
+        }
+        if let Some(path) = es.path {
+            let trimmed = path.trim().to_string();
+            if trimmed.is_empty() {
+                current.path = None;
+            } else {
+                validate_export_path(&trimmed)?;
+                current.path = Some(trimmed);
+            }
+        }
+        if current.enabled && current.path.is_none() {
+            current.enabled = false;
         }
     }
 

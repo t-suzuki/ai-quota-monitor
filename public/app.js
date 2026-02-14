@@ -16,6 +16,7 @@ const state = {
   rawResponses: {},
   history: {},    // { 'serviceKey:windowName': [util1, util2, ...] }
   notifySettings: { critical: true, recovery: true, warning: false, thresholdWarning: 75, thresholdCritical: 90 },
+  usageExport: { enabled: false, path: '' },
 };
 
 const THRESHOLDS_EXHAUSTED = 100;
@@ -167,6 +168,8 @@ async function resolveAppVersion() {
 
 let didLogPersistError = false;
 let didLogPollingPersistError = false;
+let didLogExportPersistError = false;
+let didLogExportWriteError = false;
 let didLogWindowMoveError = false;
 const minimalDragState = {
   active: false,
@@ -346,7 +349,44 @@ async function pollAll() {
 
   render();
   persistLastData();
+  maybeWriteUsageSnapshot().catch(() => {});
   return anySuccess;
+}
+
+async function maybeWriteUsageSnapshot() {
+  if (!state.usageExport?.enabled) return;
+  const path = String(state.usageExport?.path || '').trim();
+  if (!path) return;
+
+  const entries = [];
+  for (const service of Object.keys(SERVICE_META)) {
+    for (const acc of state.accounts[service] || []) {
+      const key = `${service}:${acc.id}`;
+      const svc = state.services[key] || null;
+      entries.push({
+        service,
+        id: String(acc.id || ''),
+        name: String(acc.name || ''),
+        hasToken: hasUsableToken(acc),
+        label: svc?.label || null,
+        status: svc?.status || null,
+        windows: Array.isArray(svc?.windows) ? svc.windows : [],
+        error: svc?.error || null,
+      });
+    }
+  }
+
+  await window.quotaApi.writeUsageSnapshot({
+    fetchedAt: new Date().toISOString(),
+    entries,
+  }).then(() => {
+    didLogExportWriteError = false;
+  }).catch((e) => {
+    if (!didLogExportWriteError) {
+      log(`使用量JSON出力エラー: ${toErrorMessage(e)}`, 'warn');
+      didLogExportWriteError = true;
+    }
+  });
 }
 
 // ═══════════════════════════════════════
@@ -774,6 +814,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof ns.thresholdWarning === 'number') state.notifySettings.thresholdWarning = ns.thresholdWarning;
       if (typeof ns.thresholdCritical === 'number') state.notifySettings.thresholdCritical = ns.thresholdCritical;
     }
+    if (settings?.usageExport) {
+      const us = settings.usageExport;
+      if (typeof us.enabled === 'boolean') state.usageExport.enabled = us.enabled;
+      if (typeof us.path === 'string') state.usageExport.path = us.path;
+    }
     restoredPollState = await window.quotaApi.getPollingState();
     const windowState = await window.quotaApi.getWindowState();
     state.windowMode = windowState?.mode === 'minimal' ? 'minimal' : 'normal';
@@ -883,6 +928,26 @@ document.addEventListener('DOMContentLoaded', async () => {
       log(`通知テストに失敗しました: ${toErrorMessage(e)}`, 'warn');
     }
   });
+
+  // Usage snapshot export
+  const exportEnabledEl = $('#export-enabled');
+  const exportPathEl = $('#export-path');
+  if (exportEnabledEl) exportEnabledEl.checked = Boolean(state.usageExport.enabled);
+  if (exportPathEl) exportPathEl.value = String(state.usageExport.path || '');
+  const persistExportSettings = () => {
+    state.usageExport.enabled = Boolean($('#export-enabled').checked);
+    state.usageExport.path = String($('#export-path').value || '').trim();
+    window.quotaApi.setSettings({ usageExport: state.usageExport }).then(() => {
+      didLogExportPersistError = false;
+    }).catch((e) => {
+      if (!didLogExportPersistError) {
+        log(`出力設定保存エラー: ${toErrorMessage(e)}`, 'warn');
+        didLogExportPersistError = true;
+      }
+    });
+  };
+  $('#export-enabled').addEventListener('change', persistExportSettings);
+  $('#export-path').addEventListener('change', persistExportSettings);
 
   $(SERVICE_META.claude.addBtnId).addEventListener('click', () => addAccountRow('claude'));
   $(SERVICE_META.codex.addBtnId).addEventListener('click', () => addAccountRow('codex'));

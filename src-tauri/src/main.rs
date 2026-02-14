@@ -8,6 +8,7 @@ mod api_client;
 mod account_commands;
 mod commands;
 mod error;
+mod export_commands;
 mod notification_commands;
 mod oauth;
 mod oauth_commands;
@@ -21,7 +22,7 @@ mod validation;
 mod window_commands;
 mod window_ops;
 
-const APP_NAME: &str = "AI Quota Monitor";
+pub const APP_NAME: &str = "AI Quota Monitor";
 const STORE_FILE: &str = "accounts.json";
 const ANTHROPIC_OAUTH_BETA: &str = "oauth-2025-04-20";
 
@@ -91,11 +92,19 @@ struct NotifySettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct UsageExportSettings {
+    enabled: bool,
+    path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Settings {
     poll_interval: i32,
     polling_state: PollingState,
     window_state: WindowState,
     notify_settings: NotifySettings,
+    usage_export: UsageExportSettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,11 +163,19 @@ struct NotifySettingsRaw {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct UsageExportSettingsRaw {
+    enabled: Option<bool>,
+    path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SettingsRaw {
     poll_interval: Option<i32>,
     polling_state: Option<PollingStateRaw>,
     window_state: Option<WindowStateRaw>,
     notify_settings: Option<NotifySettingsRaw>,
+    usage_export: Option<UsageExportSettingsRaw>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -217,9 +234,17 @@ struct NotifySettingsPatch {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct UsageExportSettingsPatch {
+    enabled: Option<bool>,
+    path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SetSettingsPayload {
     poll_interval: Option<i32>,
     notify_settings: Option<NotifySettingsPatch>,
+    usage_export: Option<UsageExportSettingsPatch>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -256,6 +281,26 @@ struct SetWindowPositionPayload {
     y: Option<i32>,
     width: Option<i32>,
     height: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UsageSnapshotEntry {
+    service: String,
+    id: String,
+    name: String,
+    has_token: bool,
+    label: Option<String>,
+    status: Option<String>,
+    windows: Vec<usage_parser::UsageWindow>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WriteUsageSnapshotPayload {
+    fetched_at: Option<String>,
+    entries: Option<Vec<UsageSnapshotEntry>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -310,6 +355,7 @@ fn main() {
             commands::delete_account,
             commands::get_settings,
             commands::set_settings,
+            commands::write_usage_snapshot,
             commands::get_polling_state,
             commands::set_polling_state,
             commands::fetch_usage,

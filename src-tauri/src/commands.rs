@@ -7,6 +7,7 @@ use crate::notification_commands::send_notification as send_notification_impl;
 use crate::oauth_commands::{
     self, OAuthLoginResult, TokenStatus,
 };
+use crate::export_commands::write_usage_snapshot as write_usage_snapshot_impl;
 use crate::settings_commands::{
     get_polling_state as get_polling_state_impl, get_settings as get_settings_impl,
     set_polling_state as set_polling_state_impl, set_settings as set_settings_impl,
@@ -44,6 +45,11 @@ pub fn get_settings(app: AppHandle) -> Result<crate::Settings, String> {
 #[tauri::command]
 pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> Result<crate::Settings, String> {
     set_settings_impl(app, payload).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn write_usage_snapshot(app: AppHandle, payload: crate::WriteUsageSnapshotPayload) -> Result<crate::ApiOk, String> {
+    write_usage_snapshot_impl(app, payload).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

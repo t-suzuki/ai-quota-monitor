@@ -7,6 +7,7 @@ Claude Code / Codex のクォータ使用状況を監視する Tauri デスク�
 - 複数アカウント対応 (Claude Code / Codex それぞれ複数登録可)
 - ステータス自動分類 (`ok` / `warning` / `critical` / `exhausted`) とカード左端の色分け表示
 - 通知設定パネル: 悪化・回復時のデスクトップ通知
+- 使用量JSON出力: 取得した使用量/リセット時刻などをJSONファイルに書き出し (外部監視向け)
 - 閾値カスタマイズ: `warning` / `critical` の % を変更可能 (`exhausted` は 100% 固定)
 - ダブルクリックでミニマル表示 (カードのみ) に切替
 - ミニマル表示はウィンドウ幅に応じてカラム数が自動増減
@@ -17,6 +18,52 @@ Claude Code / Codex のクォータ使用状況を監視する Tauri デスク�
 - フロントは `window.quotaApi` のみを利用し、Tauri コマンド経由で backend と通信する。
 - トークンは平文保存せず OS キーチェーンに保存する。
 - 設定 (`pollInterval`, 通知閾値, ウィンドウ状態など) は `appData/accounts.json` に永続化する。
+
+## 使用量JSON出力
+
+取得した使用量情報を、外部ソフトが監視しやすいようにJSONファイルとして書き出します（取得のたびに上書き）。
+
+- UI: `💾 使用量JSON出力`
+- パス指定:
+  - 絶対パス: そのまま書き込み
+  - 相対パス: アプリデータフォルダ配下に保存
+- `出力先ファイルパス` が空の状態では `有効` にできません（安全のため no-op）
+
+### フォーマット
+
+```json
+{
+  "schemaVersion": 1,
+  "appName": "AI Quota Monitor",
+  "appVersion": "0.0.3",
+  "generatedAt": "2026-02-14T12:34:56Z",
+  "fetchedAt": "2026-02-14T12:34:56.789Z",
+  "entries": [
+    {
+      "service": "claude",
+      "id": "account1",
+      "name": "My Claude",
+      "hasToken": true,
+      "label": "Claude Code: My Claude",
+      "status": "ok",
+      "windows": [
+        {
+          "name": "5時間",
+          "utilization": 12.3,
+          "resetsAt": "2026-02-14T15:00:00Z",
+          "status": "ok",
+          "windowSeconds": 18000
+        }
+      ],
+      "error": null
+    }
+  ]
+}
+```
+
+補足:
+- `entries[].windows[].resetsAt` は upstream により「文字列/数値/null」があり得ます（そのまま格納します）。
+- `entries[].status` は `ok|warning|critical|exhausted|error|unknown` のいずれかになります。
 
 ## アーキテクチャ
 

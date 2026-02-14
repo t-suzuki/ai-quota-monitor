@@ -7,6 +7,7 @@ const FETCH_USAGE_MIN_INTERVAL_MS: u64 = 500;
 const MAX_ACCOUNT_ID_LEN: usize = 128;
 const MAX_ACCOUNT_NAME_LEN: usize = 256;
 const MAX_TOKEN_LEN: usize = 16384;
+const MAX_EXPORT_PATH_LEN: usize = 4096;
 
 static FETCH_USAGE_RATE_LIMITER: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
 
@@ -100,6 +101,23 @@ pub fn validate_upstream_url(url: &str) -> AppResult<()> {
     }
 }
 
+pub fn validate_export_path(path: &str) -> AppResult<()> {
+    if path.is_empty() {
+        return Err(AppError::InvalidInput("Export path is required".to_string()));
+    }
+    if path.len() > MAX_EXPORT_PATH_LEN {
+        return Err(AppError::InvalidInput(format!(
+            "Export path is too long (max {MAX_EXPORT_PATH_LEN} chars)"
+        )));
+    }
+    if has_control_chars(path) {
+        return Err(AppError::InvalidInput(
+            "Export path contains control characters".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn enforce_fetch_usage_rate_limit(service: &str, id: &str) -> AppResult<()> {
     let key = format!("{service}:{id}");
     let limiter = FETCH_USAGE_RATE_LIMITER.get_or_init(|| Mutex::new(HashMap::new()));
@@ -125,4 +143,24 @@ pub fn enforce_fetch_usage_rate_limit(service: &str, id: &str) -> AppResult<()> 
 
     lock.insert(key, now);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_export_path_rejects_empty() {
+        assert!(validate_export_path("").is_err());
+    }
+
+    #[test]
+    fn validate_export_path_rejects_control_chars() {
+        assert!(validate_export_path("a\nb").is_err());
+    }
+
+    #[test]
+    fn validate_export_path_accepts_reasonable() {
+        assert!(validate_export_path("quota.json").is_ok());
+    }
 }

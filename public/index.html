@@ -114,6 +114,22 @@
     </div>
   </details>
 
+  <!-- Usage Snapshot Export -->
+  <details class="setup" id="export-setup">
+    <summary>💾 使用量JSON出力</summary>
+    <div class="field">
+      <label class="check-label"><input type="checkbox" id="export-enabled"> 取得結果をJSONファイルに書き出す</label>
+      <div class="help">他のソフトがこのファイルを監視して利用する想定です。取得のたびに上書きします。</div>
+    </div>
+    <div class="field">
+      <label>出力先ファイルパス</label>
+      <div class="row">
+        <input type="text" id="export-path" placeholder="例: C:\path\quota.json / /tmp/quota.json / quota.json">
+      </div>
+      <div class="help">相対パスはアプリデータフォルダ配下に保存されます。</div>
+    </div>
+  </details>
+
   <!-- Raw responses for debugging -->
   <details class="raw" id="raw-section">
     <summary>🔍 生レスポンス (デバッグ用)</summary>
