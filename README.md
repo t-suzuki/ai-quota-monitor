@@ -35,7 +35,7 @@ Claude Code / Codex のクォータ使用状況を監視する Tauri デスク�
 {
   "schemaVersion": 1,
   "appName": "AI Quota Monitor",
-  "appVersion": "0.0.3",
+  "appVersion": "0.0.4",
   "generatedAt": "2026-02-14T12:34:56Z",
   "fetchedAt": "2026-02-14T12:34:56.789Z",
   "entries": [
