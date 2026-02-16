@@ -25,6 +25,7 @@
     startWindowDrag: () => call('start_window_drag'),
     sendNotification: (payload) => call('send_notification', { payload }),
     getVersion: () => call('get_version'),
+    quitApp: () => call('quit_app'),
     oauthLogin: (payload) => call('oauth_login', { payload }),
     cancelOauthLogin: () => call('cancel_oauth_login'),
     importClaudeCliCredentials: (payload) => call('import_claude_cli_credentials', { payload }),

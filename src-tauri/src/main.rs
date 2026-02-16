@@ -364,6 +364,7 @@ fn main() {
             commands::set_window_position,
             commands::start_window_drag,
             commands::get_version,
+            commands::quit_app,
             commands::send_notification,
             commands::oauth_login,
             commands::cancel_oauth_login,

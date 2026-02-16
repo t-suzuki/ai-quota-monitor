@@ -171,6 +171,12 @@ let didLogPollingPersistError = false;
 let didLogExportPersistError = false;
 let didLogExportWriteError = false;
 let didLogWindowMoveError = false;
+const minimalDragState = {
+  armed: false,
+  startClientX: 0,
+  startClientY: 0,
+};
+let contextMenuEl = null;
 const accountUi = window.AccountUi.createAccountUi({
   query: $,
   serviceMeta: SERVICE_META,
@@ -627,11 +633,31 @@ function isNearWindowEdge(event) {
 }
 
 function setupMinimalWindowDragHandlers() {
+  const cancelArmedDrag = () => {
+    minimalDragState.armed = false;
+  };
+
   document.addEventListener('mousedown', (event) => {
     if (state.windowMode !== 'minimal') return;
     if (event.button !== 0) return;
     if (!isMinimalDragTarget(event.target)) return;
     if (isNearWindowEdge(event)) return;
+    if (event.detail >= 2) return;
+    minimalDragState.armed = true;
+    minimalDragState.startClientX = event.clientX;
+    minimalDragState.startClientY = event.clientY;
+  });
+
+  document.addEventListener('mousemove', (event) => {
+    if (!minimalDragState.armed) return;
+    if ((event.buttons & 1) !== 1) {
+      cancelArmedDrag();
+      return;
+    }
+    const dx = Math.abs(event.clientX - minimalDragState.startClientX);
+    const dy = Math.abs(event.clientY - minimalDragState.startClientY);
+    if (dx < 3 && dy < 3) return;
+    cancelArmedDrag();
     window.quotaApi.startWindowDrag()
       .then(() => {
         didLogWindowMoveError = false;
@@ -643,6 +669,62 @@ function setupMinimalWindowDragHandlers() {
         }
       });
   });
+
+  document.addEventListener('mouseup', cancelArmedDrag);
+  document.addEventListener('mouseleave', cancelArmedDrag);
+  window.addEventListener('blur', cancelArmedDrag);
+}
+
+function closeContextMenu() {
+  if (!contextMenuEl) return;
+  contextMenuEl.classList.remove('open');
+}
+
+function openContextMenu(x, y) {
+  if (!contextMenuEl) return;
+  const menuWidth = contextMenuEl.offsetWidth || 160;
+  const menuHeight = contextMenuEl.offsetHeight || 40;
+  const maxX = Math.max(0, window.innerWidth - menuWidth - 8);
+  const maxY = Math.max(0, window.innerHeight - menuHeight - 8);
+  const px = Math.max(8, Math.min(x, maxX));
+  const py = Math.max(8, Math.min(y, maxY));
+  contextMenuEl.style.left = `${px}px`;
+  contextMenuEl.style.top = `${py}px`;
+  contextMenuEl.classList.add('open');
+}
+
+function setupAppContextMenu() {
+  contextMenuEl = document.createElement('div');
+  contextMenuEl.className = 'app-context-menu';
+  contextMenuEl.innerHTML = '<button type="button" data-action="quit">終了</button>';
+  document.body.appendChild(contextMenuEl);
+
+  contextMenuEl.addEventListener('click', (event) => {
+    const btn = event.target.closest('button[data-action="quit"]');
+    if (!btn) return;
+    window.quotaApi.quitApp().catch((e) => {
+      log(`アプリ終了エラー: ${toErrorMessage(e)}`, 'warn');
+    });
+    closeContextMenu();
+  });
+
+  document.addEventListener('contextmenu', (event) => {
+    if (event.shiftKey) {
+      closeContextMenu();
+      return;
+    }
+    event.preventDefault();
+    openContextMenu(event.clientX, event.clientY);
+  });
+  document.addEventListener('click', (event) => {
+    if (event.button !== 0) return;
+    if (contextMenuEl && contextMenuEl.contains(event.target)) return;
+    closeContextMenu();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeContextMenu();
+  });
+  window.addEventListener('blur', closeContextMenu);
 }
 
 // ═══════════════════════════════════════
@@ -938,6 +1020,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateCountdown();
   });
   setupMinimalWindowDragHandlers();
+  setupAppContextMenu();
 
   ensureServicePlaceholders();
   render();

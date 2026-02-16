@@ -107,6 +107,12 @@ pub fn get_version(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+pub fn quit_app(app: AppHandle) -> Result<crate::ApiOk, String> {
+    app.exit(0);
+    Ok(crate::ApiOk { ok: true })
+}
+
+#[tauri::command]
 pub fn send_notification(
     app: AppHandle,
     payload: crate::SendNotificationPayload,

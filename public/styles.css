@@ -256,3 +256,31 @@ body.minimal-mode .empty { padding: 24px 10px; }
 .w-98 { width: 98%; }
 .w-99 { width: 99%; }
 .w-100 { width: 100%; }
+
+.app-context-menu {
+  position: fixed;
+  left: -9999px;
+  top: -9999px;
+  z-index: 2000;
+  display: none;
+  min-width: 130px;
+  padding: 6px;
+  border: 1px solid var(--bg3);
+  border-radius: 6px;
+  background: var(--bg2);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .35);
+}
+.app-context-menu.open { display: block; }
+.app-context-menu button {
+  width: 100%;
+  border: 0;
+  border-radius: 4px;
+  padding: 7px 10px;
+  text-align: left;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.app-context-menu button:hover { background: var(--bg3); }
