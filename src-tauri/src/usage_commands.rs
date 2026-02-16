@@ -17,7 +17,6 @@ pub async fn fetch_usage(
 
     let id = crate::sanitize_string(payload.id.as_deref(), "");
     validate_account_id(&id)?;
-    enforce_fetch_usage_rate_limit(&service, &id)?;
 
     let fallback_name = format!("{} {}", service.to_uppercase(), id);
     let name = crate::sanitize_string(payload.name.as_deref(), &fallback_name);
@@ -55,6 +54,10 @@ pub async fn fetch_usage(
 
     let mut token = get_token(&service, &id)
         .ok_or_else(|| AppError::InvalidInput("Token is not set for this account".to_string()))?;
+    if let Err(e) = enforce_fetch_usage_rate_limit(&service, &token) {
+        token.zeroize();
+        return Err(e);
+    }
     let fetch_result = fetch_normalized_usage(&service, &token, crate::ANTHROPIC_OAUTH_BETA).await;
     token.zeroize();
     fetch_result.map_err(AppError::from)

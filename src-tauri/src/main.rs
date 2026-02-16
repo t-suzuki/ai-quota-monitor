@@ -421,14 +421,14 @@ mod tests {
 
     #[test]
     fn rate_limit_blocks_immediate_repeat() {
-        let unique_id = format!(
+        let unique_token = format!(
             "t{}",
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("clock drift")
                 .as_nanos()
         );
-        assert!(validation::enforce_fetch_usage_rate_limit("claude", &unique_id).is_ok());
-        assert!(validation::enforce_fetch_usage_rate_limit("claude", &unique_id).is_err());
+        assert!(validation::enforce_fetch_usage_rate_limit("claude", &unique_token).is_ok());
+        assert!(validation::enforce_fetch_usage_rate_limit("claude", &unique_token).is_err());
     }
 }

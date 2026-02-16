@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use crate::error::{AppError, AppResult};
+use sha2::{Digest, Sha256};
 
-const FETCH_USAGE_MIN_INTERVAL_MS: u64 = 500;
+const FETCH_USAGE_MIN_INTERVAL_MS: u64 = 1000;
 const MAX_ACCOUNT_ID_LEN: usize = 128;
 const MAX_ACCOUNT_NAME_LEN: usize = 256;
 const MAX_TOKEN_LEN: usize = 16384;
@@ -118,8 +119,11 @@ pub fn validate_export_path(path: &str) -> AppResult<()> {
     Ok(())
 }
 
-pub fn enforce_fetch_usage_rate_limit(service: &str, id: &str) -> AppResult<()> {
-    let key = format!("{service}:{id}");
+pub fn enforce_fetch_usage_rate_limit(service: &str, token: &str) -> AppResult<()> {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    let token_hash = format!("{:x}", hasher.finalize());
+    let key = format!("{service}:{token_hash}");
     let limiter = FETCH_USAGE_RATE_LIMITER.get_or_init(|| Mutex::new(HashMap::new()));
     let mut lock = limiter
         .lock()
