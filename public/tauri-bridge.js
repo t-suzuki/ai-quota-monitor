@@ -23,6 +23,7 @@
     setWindowMode: (payload) => call('set_window_mode', { payload }),
     setWindowPosition: (payload) => call('set_window_position', { payload }),
     startWindowDrag: () => call('start_window_drag'),
+    resizeWindowKeepTopLeft: (payload) => call('resize_window_keep_top_left', { payload }),
     sendNotification: (payload) => call('send_notification', { payload }),
     getVersion: () => call('get_version'),
     quitApp: () => call('quit_app'),

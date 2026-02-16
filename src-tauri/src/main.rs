@@ -283,6 +283,13 @@ struct SetWindowPositionPayload {
     height: Option<i32>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ResizeWindowPayload {
+    width: Option<i32>,
+    height: Option<i32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UsageSnapshotEntry {
@@ -363,6 +370,7 @@ fn main() {
             commands::set_window_mode,
             commands::set_window_position,
             commands::start_window_drag,
+            commands::resize_window_keep_top_left,
             commands::get_version,
             commands::quit_app,
             commands::send_notification,

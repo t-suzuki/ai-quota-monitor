@@ -38,6 +38,10 @@ const MINIMAL_MIN_HEIGHT_FLOOR = 220;
 const MINIMAL_WINDOW_MAX_SIZE = 2000;
 const MINIMAL_PREFERRED_HEIGHT_MAX = 4000;
 const MINIMAL_DRAG_EDGE_PX = 8;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 3.0;
+const ZOOM_STEP = 0.1;
+const ZOOM_DEFAULT = 1.0;
 if (!window.quotaApi || window.quotaApi.platform !== 'tauri') {
   throw new Error('Tauri quotaApi bridge is required');
 }
@@ -62,6 +66,7 @@ const SESSION_KEYS = {
   history: 'qm-history',
   fetchedAt: 'qm-fetched-at',
 };
+const UI_ZOOM_STORAGE_KEY = 'qm-ui-zoom';
 const SERVICE_META = {
   claude: {
     label: 'Claude Code', listId: '#claude-accounts', addBtnId: '#btn-add-claude',
@@ -171,6 +176,9 @@ let didLogPollingPersistError = false;
 let didLogExportPersistError = false;
 let didLogExportWriteError = false;
 let didLogWindowMoveError = false;
+const zoomState = {
+  value: ZOOM_DEFAULT,
+};
 const minimalDragState = {
   armed: false,
   startClientX: 0,
@@ -675,6 +683,86 @@ function setupMinimalWindowDragHandlers() {
   window.addEventListener('blur', cancelArmedDrag);
 }
 
+function clampZoom(value) {
+  return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value));
+}
+
+function readStoredZoom() {
+  try {
+    const raw = localStorage.getItem(UI_ZOOM_STORAGE_KEY);
+    if (!raw) return ZOOM_DEFAULT;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return ZOOM_DEFAULT;
+    return clampZoom(parsed);
+  } catch {
+    return ZOOM_DEFAULT;
+  }
+}
+
+function writeStoredZoom(value) {
+  try {
+    localStorage.setItem(UI_ZOOM_STORAGE_KEY, String(value));
+  } catch {}
+}
+
+function applyZoomVisual(value) {
+  const zoom = value > 0 ? value : 1;
+  document.body.style.zoom = String(zoom);
+  // Keep effective viewport height stable under CSS zoom to avoid phantom bottom whitespace/scroll.
+  document.body.style.minHeight = `${100 / zoom}vh`;
+}
+
+function resizeWindowByZoomRatio(ratio) {
+  if (!Number.isFinite(ratio) || ratio <= 0) return;
+  const frameW = Math.max(0, window.outerWidth - window.innerWidth);
+  const frameH = Math.max(0, window.outerHeight - window.innerHeight);
+  const targetInnerW = Math.max(320, Math.round(window.innerWidth * ratio));
+  const targetInnerH = Math.max(240, Math.round(window.innerHeight * ratio));
+  const width = targetInnerW + frameW;
+  const height = targetInnerH + frameH;
+  window.quotaApi.resizeWindowKeepTopLeft({
+    width,
+    height,
+  }).catch((e) => {
+    log(`ウィンドウ拡大縮小エラー: ${toErrorMessage(e)}`, 'warn');
+  });
+}
+
+function setZoom(nextZoom, resizeWindow = true) {
+  const target = clampZoom(Math.round(nextZoom * 100) / 100);
+  const prev = zoomState.value;
+  if (!Number.isFinite(target) || target <= 0) return;
+  if (Math.abs(target - prev) < 0.0001) return;
+  zoomState.value = target;
+  applyZoomVisual(target);
+  writeStoredZoom(target);
+  if (resizeWindow) resizeWindowByZoomRatio(target / prev);
+}
+
+function adjustZoomByStep(delta) {
+  setZoom(zoomState.value + delta, true);
+}
+
+function setupZoomShortcuts() {
+  document.addEventListener('keydown', (event) => {
+    if (!event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault();
+      adjustZoomByStep(ZOOM_STEP);
+      return;
+    }
+    if (event.key === '-' || event.key === '_') {
+      event.preventDefault();
+      adjustZoomByStep(-ZOOM_STEP);
+      return;
+    }
+    if (event.key === '0') {
+      event.preventDefault();
+      setZoom(ZOOM_DEFAULT, true);
+    }
+  });
+}
+
 function closeContextMenu() {
   if (!contextMenuEl) return;
   contextMenuEl.classList.remove('open');
@@ -682,12 +770,14 @@ function closeContextMenu() {
 
 function openContextMenu(x, y) {
   if (!contextMenuEl) return;
+  const zoom = zoomState.value > 0 ? zoomState.value : 1;
   const menuWidth = contextMenuEl.offsetWidth || 160;
   const menuHeight = contextMenuEl.offsetHeight || 40;
-  const maxX = Math.max(0, window.innerWidth - menuWidth - 8);
-  const maxY = Math.max(0, window.innerHeight - menuHeight - 8);
-  const px = Math.max(8, Math.min(x, maxX));
-  const py = Math.max(8, Math.min(y, maxY));
+  const inset = 8;
+  const maxX = Math.max(0, (window.innerWidth / zoom) - menuWidth - inset);
+  const maxY = Math.max(0, (window.innerHeight / zoom) - menuHeight - inset);
+  const px = Math.max(inset, Math.min(x / zoom, maxX));
+  const py = Math.max(inset, Math.min(y / zoom, maxY));
   contextMenuEl.style.left = `${px}px`;
   contextMenuEl.style.top = `${py}px`;
   contextMenuEl.classList.add('open');
@@ -696,15 +786,26 @@ function openContextMenu(x, y) {
 function setupAppContextMenu() {
   contextMenuEl = document.createElement('div');
   contextMenuEl.className = 'app-context-menu';
-  contextMenuEl.innerHTML = '<button type="button" data-action="quit">終了</button>';
+  contextMenuEl.innerHTML = ''
+    + '<button type="button" data-action="zoom-in">拡大</button>'
+    + '<button type="button" data-action="zoom-out">縮小</button>'
+    + '<button type="button" data-action="zoom-reset">100%表示</button>'
+    + '<div class="app-context-menu-sep"></div>'
+    + '<button type="button" data-action="quit">終了</button>';
   document.body.appendChild(contextMenuEl);
 
   contextMenuEl.addEventListener('click', (event) => {
-    const btn = event.target.closest('button[data-action="quit"]');
+    const btn = event.target.closest('button[data-action]');
     if (!btn) return;
-    window.quotaApi.quitApp().catch((e) => {
-      log(`アプリ終了エラー: ${toErrorMessage(e)}`, 'warn');
-    });
+    const action = btn.getAttribute('data-action');
+    if (action === 'zoom-in') adjustZoomByStep(ZOOM_STEP);
+    if (action === 'zoom-out') adjustZoomByStep(-ZOOM_STEP);
+    if (action === 'zoom-reset') setZoom(ZOOM_DEFAULT, true);
+    if (action === 'quit') {
+      window.quotaApi.quitApp().catch((e) => {
+        log(`アプリ終了エラー: ${toErrorMessage(e)}`, 'warn');
+      });
+    }
     closeContextMenu();
   });
 
@@ -846,6 +947,9 @@ function showInitFailure(error) {
 // ═══════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
   let restoredPollState = null;
+  const initialZoom = readStoredZoom();
+  zoomState.value = initialZoom;
+  applyZoomVisual(initialZoom);
 
   const version = await resolveAppVersion();
   const versionEl = $('#app-version');
@@ -1020,6 +1124,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateCountdown();
   });
   setupMinimalWindowDragHandlers();
+  setupZoomShortcuts();
   setupAppContextMenu();
 
   ensureServicePlaceholders();

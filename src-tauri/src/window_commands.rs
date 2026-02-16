@@ -115,3 +115,32 @@ pub fn start_window_drag(_app: AppHandle, window: WebviewWindow) -> AppResult<cr
 
     Ok(crate::ApiOk { ok: true })
 }
+
+pub fn resize_window_keep_top_left(
+    _app: AppHandle,
+    window: WebviewWindow,
+    payload: crate::ResizeWindowPayload,
+) -> AppResult<crate::ApiOk> {
+    let width = payload
+        .width
+        .ok_or_else(|| AppError::InvalidInput("width and height are required".to_string()))?;
+    let height = payload
+        .height
+        .ok_or_else(|| AppError::InvalidInput("width and height are required".to_string()))?;
+    if width < crate::MINIMAL_FLOOR_W || height < crate::MINIMAL_FLOOR_H {
+        return Err(AppError::InvalidInput("window size is below minimum".to_string()));
+    }
+
+    let current = current_window_bounds(&window)?;
+    let x = current
+        .x
+        .ok_or_else(|| AppError::Window("Failed to read current window x".to_string()))?;
+    let y = current
+        .y
+        .ok_or_else(|| AppError::Window("Failed to read current window y".to_string()))?;
+
+    set_window_size(&window, width, height)?;
+    set_window_position_inner(&window, x, y)?;
+
+    Ok(crate::ApiOk { ok: true })
+}
