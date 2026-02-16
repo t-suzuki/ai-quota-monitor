@@ -107,3 +107,11 @@ pub fn set_window_position(
 
     Ok(crate::ApiOk { ok: true })
 }
+
+pub fn start_window_drag(_app: AppHandle, window: WebviewWindow) -> AppResult<crate::ApiOk> {
+    window
+        .start_dragging()
+        .map_err(|e| AppError::Window(format!("Failed to start window drag: {e}")))?;
+
+    Ok(crate::ApiOk { ok: true })
+}

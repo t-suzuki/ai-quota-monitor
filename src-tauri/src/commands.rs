@@ -15,7 +15,7 @@ use crate::settings_commands::{
 use crate::usage_commands::fetch_usage as fetch_usage_impl;
 use crate::window_commands::{
     get_window_state as get_window_state_impl, set_window_mode as set_window_mode_impl,
-    set_window_position as set_window_position_impl,
+    set_window_position as set_window_position_impl, start_window_drag as start_window_drag_impl,
 };
 use tauri::{AppHandle, WebviewWindow};
 
@@ -94,6 +94,11 @@ pub fn set_window_position(
     payload: crate::SetWindowPositionPayload,
 ) -> Result<crate::ApiOk, String> {
     set_window_position_impl(app, window, payload).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn start_window_drag(app: AppHandle, window: WebviewWindow) -> Result<crate::ApiOk, String> {
+    start_window_drag_impl(app, window).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -362,6 +362,7 @@ fn main() {
             commands::get_window_state,
             commands::set_window_mode,
             commands::set_window_position,
+            commands::start_window_drag,
             commands::get_version,
             commands::send_notification,
             commands::oauth_login,

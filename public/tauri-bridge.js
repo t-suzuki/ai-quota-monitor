@@ -22,6 +22,7 @@
     getWindowState: () => call('get_window_state'),
     setWindowMode: (payload) => call('set_window_mode', { payload }),
     setWindowPosition: (payload) => call('set_window_position', { payload }),
+    startWindowDrag: () => call('start_window_drag'),
     sendNotification: (payload) => call('send_notification', { payload }),
     getVersion: () => call('get_version'),
     oauthLogin: (payload) => call('oauth_login', { payload }),

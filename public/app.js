@@ -171,13 +171,6 @@ let didLogPollingPersistError = false;
 let didLogExportPersistError = false;
 let didLogExportWriteError = false;
 let didLogWindowMoveError = false;
-const minimalDragState = {
-  active: false,
-  offsetX: 0,
-  offsetY: 0,
-  width: 0,
-  height: 0,
-};
 const accountUi = window.AccountUi.createAccountUi({
   query: $,
   serviceMeta: SERVICE_META,
@@ -594,7 +587,6 @@ function isMinimalToggleTarget(target) {
 }
 
 async function toggleWindowModeByGesture() {
-  minimalDragState.active = false;
   const nextMode = state.windowMode === 'minimal' ? 'normal' : 'minimal';
   state.windowMode = nextMode;
   applyMinimalModeUI(nextMode === 'minimal');
@@ -635,32 +627,12 @@ function isNearWindowEdge(event) {
 }
 
 function setupMinimalWindowDragHandlers() {
-  const endDrag = () => {
-    minimalDragState.active = false;
-  };
-
   document.addEventListener('mousedown', (event) => {
     if (state.windowMode !== 'minimal') return;
     if (event.button !== 0) return;
     if (!isMinimalDragTarget(event.target)) return;
     if (isNearWindowEdge(event)) return;
-    minimalDragState.active = true;
-    minimalDragState.offsetX = event.screenX - window.screenX;
-    minimalDragState.offsetY = event.screenY - window.screenY;
-    minimalDragState.width = Math.max(MINIMAL_FLOOR_W, Math.round(window.outerWidth));
-    minimalDragState.height = Math.max(MINIMAL_FLOOR_W, Math.round(window.outerHeight));
-  });
-
-  document.addEventListener('mousemove', (event) => {
-    if (!minimalDragState.active) return;
-    const x = Math.round(event.screenX - minimalDragState.offsetX);
-    const y = Math.round(event.screenY - minimalDragState.offsetY);
-    window.quotaApi.setWindowPosition({
-      x,
-      y,
-      width: minimalDragState.width,
-      height: minimalDragState.height,
-    })
+    window.quotaApi.startWindowDrag()
       .then(() => {
         didLogWindowMoveError = false;
       })
@@ -671,9 +643,6 @@ function setupMinimalWindowDragHandlers() {
         }
       });
   });
-
-  document.addEventListener('mouseup', endDrag);
-  document.addEventListener('mouseleave', endDrag);
 }
 
 // ═══════════════════════════════════════
