@@ -16,6 +16,10 @@ const state = {
   rawResponses: {},
   history: {},    // { 'serviceKey:windowName': [util1, util2, ...] }
   notifySettings: { critical: true, recovery: true, warning: false, thresholdWarning: 75, thresholdCritical: 90 },
+  externalNotify: {
+    discord: { enabled: false, webhookUrl: '' },
+    pushover: { enabled: false, apiToken: '', userKey: '' },
+  },
   usageExport: { enabled: false, path: '' },
 };
 
@@ -146,15 +150,21 @@ function formatReset(epoch) {
   return `${timeStr} (あと${m}分)`;
 }
 
-async function notify(title, body) {
+async function notify(title, body, level) {
   await window.quotaApi.sendNotification({ title, body });
+  const en = state.externalNotify;
+  if (en.discord.enabled || en.pushover.enabled) {
+    window.quotaApi.sendExternalNotification({ title, body, level: level || '' }).catch((e) => {
+      log(`外部通知送信エラー: ${toErrorMessage(e)}`, 'warn');
+    });
+  }
   return true;
 }
 
 function checkStatusTransition(prev, next, label, windows) {
   const effects = buildTransitionEffects(prev, next, label, windows, state.notifySettings);
   for (const item of effects.notifications) {
-    notify(item.title, item.body).catch((e) => {
+    notify(item.title, item.body, next).catch((e) => {
       log(`通知送信エラー: ${toErrorMessage(e)}`, 'warn');
     });
   }
@@ -969,6 +979,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (typeof ns.thresholdWarning === 'number') state.notifySettings.thresholdWarning = ns.thresholdWarning;
       if (typeof ns.thresholdCritical === 'number') state.notifySettings.thresholdCritical = ns.thresholdCritical;
     }
+    if (settings?.externalNotify) {
+      const en = settings.externalNotify;
+      if (en.discord) {
+        if (typeof en.discord.enabled === 'boolean') state.externalNotify.discord.enabled = en.discord.enabled;
+        if (typeof en.discord.webhookUrl === 'string') state.externalNotify.discord.webhookUrl = en.discord.webhookUrl;
+      }
+      if (en.pushover) {
+        if (typeof en.pushover.enabled === 'boolean') state.externalNotify.pushover.enabled = en.pushover.enabled;
+        if (typeof en.pushover.apiToken === 'string') state.externalNotify.pushover.apiToken = en.pushover.apiToken;
+        if (typeof en.pushover.userKey === 'string') state.externalNotify.pushover.userKey = en.pushover.userKey;
+      }
+    }
     if (settings?.usageExport) {
       const us = settings.usageExport;
       if (typeof us.enabled === 'boolean') state.usageExport.enabled = us.enabled;
@@ -1081,6 +1103,87 @@ document.addEventListener('DOMContentLoaded', async () => {
       log('テスト通知を送信しました', 'ok');
     } catch (e) {
       log(`通知テストに失敗しました: ${toErrorMessage(e)}`, 'warn');
+    }
+  });
+
+  // External notification channels
+  const discordEnabledEl = $('#discord-enabled');
+  const discordUrlEl = $('#discord-webhook-url');
+  const pushoverEnabledEl = $('#pushover-enabled');
+  const pushoverTokenEl = $('#pushover-api-token');
+  const pushoverKeyEl = $('#pushover-user-key');
+  if (discordEnabledEl) discordEnabledEl.checked = state.externalNotify.discord.enabled;
+  if (discordUrlEl) discordUrlEl.value = state.externalNotify.discord.webhookUrl;
+  if (pushoverEnabledEl) pushoverEnabledEl.checked = state.externalNotify.pushover.enabled;
+  if (pushoverTokenEl) pushoverTokenEl.value = state.externalNotify.pushover.apiToken;
+  if (pushoverKeyEl) pushoverKeyEl.value = state.externalNotify.pushover.userKey;
+
+  let didLogExtNotifyPersistError = false;
+  const persistExternalNotifySettings = () => {
+    state.externalNotify.discord.enabled = Boolean($('#discord-enabled')?.checked);
+    state.externalNotify.discord.webhookUrl = String($('#discord-webhook-url')?.value || '').trim();
+    state.externalNotify.pushover.enabled = Boolean($('#pushover-enabled')?.checked);
+    state.externalNotify.pushover.apiToken = String($('#pushover-api-token')?.value || '').trim();
+    state.externalNotify.pushover.userKey = String($('#pushover-user-key')?.value || '').trim();
+    window.quotaApi.setSettings({
+      externalNotify: {
+        discord: { enabled: state.externalNotify.discord.enabled, webhookUrl: state.externalNotify.discord.webhookUrl },
+        pushover: {
+          enabled: state.externalNotify.pushover.enabled,
+          apiToken: state.externalNotify.pushover.apiToken,
+          userKey: state.externalNotify.pushover.userKey,
+        },
+      },
+    }).then(() => {
+      didLogExtNotifyPersistError = false;
+    }).catch((e) => {
+      if (!didLogExtNotifyPersistError) {
+        log(`外部通知設定保存エラー: ${toErrorMessage(e)}`, 'warn');
+        didLogExtNotifyPersistError = true;
+      }
+    });
+  };
+  if (discordEnabledEl) discordEnabledEl.addEventListener('change', persistExternalNotifySettings);
+  if (discordUrlEl) discordUrlEl.addEventListener('change', persistExternalNotifySettings);
+  if (pushoverEnabledEl) pushoverEnabledEl.addEventListener('change', persistExternalNotifySettings);
+  if (pushoverTokenEl) pushoverTokenEl.addEventListener('change', persistExternalNotifySettings);
+  if (pushoverKeyEl) pushoverKeyEl.addEventListener('change', persistExternalNotifySettings);
+
+  $('#btn-discord-test')?.addEventListener('click', async () => {
+    try {
+      persistExternalNotifySettings();
+      const result = await window.quotaApi.sendExternalNotification({
+        title: 'テスト',
+        body: 'AI Quota Monitor の Discord 通知が有効です',
+        level: 'ok',
+        channel: 'discord',
+      });
+      if (result.ok) {
+        log('Discord テスト通知を送信しました', 'ok');
+      } else {
+        log(`Discord テスト通知エラー: ${result.errors.join(', ')}`, 'warn');
+      }
+    } catch (e) {
+      log(`Discord テスト通知に失敗しました: ${toErrorMessage(e)}`, 'warn');
+    }
+  });
+
+  $('#btn-pushover-test')?.addEventListener('click', async () => {
+    try {
+      persistExternalNotifySettings();
+      const result = await window.quotaApi.sendExternalNotification({
+        title: 'テスト',
+        body: 'AI Quota Monitor の Pushover 通知が有効です',
+        level: 'ok',
+        channel: 'pushover',
+      });
+      if (result.ok) {
+        log('Pushover テスト通知を送信しました', 'ok');
+      } else {
+        log(`Pushover テスト通知エラー: ${result.errors.join(', ')}`, 'warn');
+      }
+    } catch (e) {
+      log(`Pushover テスト通知に失敗しました: ${toErrorMessage(e)}`, 'warn');
     }
   });
 

@@ -102,6 +102,66 @@ pub fn validate_upstream_url(url: &str) -> AppResult<()> {
     }
 }
 
+const MAX_WEBHOOK_URL_LEN: usize = 2048;
+const MAX_PUSHOVER_KEY_LEN: usize = 64;
+
+pub fn validate_discord_webhook_url(url: &str) -> AppResult<()> {
+    if url.is_empty() {
+        return Err(AppError::InvalidInput("Discord webhook URL is required".to_string()));
+    }
+    if url.len() > MAX_WEBHOOK_URL_LEN {
+        return Err(AppError::InvalidInput(format!(
+            "Discord webhook URL is too long (max {MAX_WEBHOOK_URL_LEN} chars)"
+        )));
+    }
+    if has_control_chars(url) {
+        return Err(AppError::InvalidInput(
+            "Discord webhook URL contains control characters".to_string(),
+        ));
+    }
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|e| AppError::InvalidInput(format!("Invalid Discord webhook URL: {e}")))?;
+    if parsed.scheme() != "https" {
+        return Err(AppError::InvalidInput(
+            "Discord webhook URL must use https".to_string(),
+        ));
+    }
+    let host = parsed.host_str().unwrap_or("");
+    if host != "discord.com" && host != "discordapp.com" {
+        return Err(AppError::InvalidInput(
+            "Discord webhook URL must be from discord.com".to_string(),
+        ));
+    }
+    if !parsed.path().starts_with("/api/webhooks/") {
+        return Err(AppError::InvalidInput(
+            "Invalid Discord webhook URL path".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_pushover_key(key: &str, label: &str) -> AppResult<()> {
+    if key.is_empty() {
+        return Err(AppError::InvalidInput(format!("{label} is required")));
+    }
+    if key.len() > MAX_PUSHOVER_KEY_LEN {
+        return Err(AppError::InvalidInput(format!(
+            "{label} is too long (max {MAX_PUSHOVER_KEY_LEN} chars)"
+        )));
+    }
+    if has_control_chars(key) {
+        return Err(AppError::InvalidInput(format!(
+            "{label} contains control characters"
+        )));
+    }
+    if !key.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(AppError::InvalidInput(format!(
+            "{label} contains invalid characters"
+        )));
+    }
+    Ok(())
+}
+
 pub fn validate_export_path(path: &str) -> AppResult<()> {
     if path.is_empty() {
         return Err(AppError::InvalidInput("Export path is required".to_string()));
@@ -166,5 +226,35 @@ mod tests {
     #[test]
     fn validate_export_path_accepts_reasonable() {
         assert!(validate_export_path("quota.json").is_ok());
+    }
+
+    #[test]
+    fn validate_discord_webhook_url_accepts_valid() {
+        assert!(validate_discord_webhook_url(
+            "https://discord.com/api/webhooks/123456/abcdef"
+        ).is_ok());
+        assert!(validate_discord_webhook_url(
+            "https://discordapp.com/api/webhooks/123/tok"
+        ).is_ok());
+    }
+
+    #[test]
+    fn validate_discord_webhook_url_rejects_invalid() {
+        assert!(validate_discord_webhook_url("").is_err());
+        assert!(validate_discord_webhook_url("http://discord.com/api/webhooks/1/t").is_err());
+        assert!(validate_discord_webhook_url("https://example.com/hook").is_err());
+        assert!(validate_discord_webhook_url("https://discord.com/other/path").is_err());
+    }
+
+    #[test]
+    fn validate_pushover_key_accepts_alphanumeric() {
+        assert!(validate_pushover_key("abc123DEF", "API Token").is_ok());
+    }
+
+    #[test]
+    fn validate_pushover_key_rejects_invalid() {
+        assert!(validate_pushover_key("", "API Token").is_err());
+        assert!(validate_pushover_key("abc-123", "API Token").is_err());
+        assert!(validate_pushover_key("abc 123", "User Key").is_err());
     }
 }

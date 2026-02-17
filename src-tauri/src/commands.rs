@@ -3,6 +3,7 @@ use crate::account_commands::{
     save_account as save_account_impl,
 };
 use crate::api_client::FetchUsageResponse;
+use crate::external_notify::send_external_notification as send_external_notification_impl;
 use crate::notification_commands::send_notification as send_notification_impl;
 use crate::oauth_commands::{
     self, OAuthLoginResult, TokenStatus,
@@ -128,6 +129,16 @@ pub fn send_notification(
     payload: crate::SendNotificationPayload,
 ) -> Result<crate::ApiOk, String> {
     send_notification_impl(app, payload).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn send_external_notification(
+    app: AppHandle,
+    payload: crate::SendExternalNotificationPayload,
+) -> Result<crate::ExternalNotifyResult, String> {
+    send_external_notification_impl(app, payload)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

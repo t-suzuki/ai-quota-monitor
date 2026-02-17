@@ -114,6 +114,32 @@
     </div>
   </details>
 
+  <!-- External Notification Channels -->
+  <details class="setup" id="external-notify-setup">
+    <summary>📡 外部通知 (Discord / Pushover)</summary>
+
+    <div class="field ext-notify-section">
+      <label class="ext-notify-header">Discord Webhook</label>
+      <label class="check-label"><input type="checkbox" id="discord-enabled"> 有効</label>
+      <div class="row" style="margin-top:6px;">
+        <input type="text" id="discord-webhook-url" placeholder="https://discord.com/api/webhooks/...">
+      </div>
+      <div class="help">サーバー設定 → 連携サービス → ウェブフック から URL を取得できます。</div>
+      <button class="btn-mini" id="btn-discord-test" type="button" style="margin-top:6px;">テスト送信</button>
+    </div>
+
+    <div class="field ext-notify-section">
+      <label class="ext-notify-header">Pushover</label>
+      <label class="check-label"><input type="checkbox" id="pushover-enabled"> 有効</label>
+      <div class="row" style="margin-top:6px;">
+        <input type="text" id="pushover-api-token" placeholder="API Token (Application)">
+        <input type="text" id="pushover-user-key" placeholder="User Key">
+      </div>
+      <div class="help">pushover.net でアプリを作成して API Token を取得し、User Key と合わせて設定してください。</div>
+      <button class="btn-mini" id="btn-pushover-test" type="button" style="margin-top:6px;">テスト送信</button>
+    </div>
+  </details>
+
   <!-- Usage Snapshot Export -->
   <details class="setup" id="export-setup">
     <summary>💾 使用量JSON出力</summary>

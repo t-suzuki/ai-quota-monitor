@@ -9,6 +9,7 @@ mod account_commands;
 mod commands;
 mod error;
 mod export_commands;
+mod external_notify;
 mod notification_commands;
 mod oauth;
 mod oauth_commands;
@@ -99,12 +100,35 @@ struct UsageExportSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct DiscordSettings {
+    enabled: bool,
+    webhook_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PushoverSettings {
+    enabled: bool,
+    api_token: String,
+    user_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExternalNotifySettings {
+    discord: DiscordSettings,
+    pushover: PushoverSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Settings {
     poll_interval: i32,
     polling_state: PollingState,
     window_state: WindowState,
     notify_settings: NotifySettings,
     usage_export: UsageExportSettings,
+    external_notify: ExternalNotifySettings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -170,12 +194,35 @@ struct UsageExportSettingsRaw {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct DiscordSettingsRaw {
+    enabled: Option<bool>,
+    webhook_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PushoverSettingsRaw {
+    enabled: Option<bool>,
+    api_token: Option<String>,
+    user_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExternalNotifySettingsRaw {
+    discord: Option<DiscordSettingsRaw>,
+    pushover: Option<PushoverSettingsRaw>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SettingsRaw {
     poll_interval: Option<i32>,
     polling_state: Option<PollingStateRaw>,
     window_state: Option<WindowStateRaw>,
     notify_settings: Option<NotifySettingsRaw>,
     usage_export: Option<UsageExportSettingsRaw>,
+    external_notify: Option<ExternalNotifySettingsRaw>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -241,10 +288,33 @@ struct UsageExportSettingsPatch {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct DiscordSettingsPatch {
+    enabled: Option<bool>,
+    webhook_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PushoverSettingsPatch {
+    enabled: Option<bool>,
+    api_token: Option<String>,
+    user_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExternalNotifySettingsPatch {
+    discord: Option<DiscordSettingsPatch>,
+    pushover: Option<PushoverSettingsPatch>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SetSettingsPayload {
     poll_interval: Option<i32>,
     notify_settings: Option<NotifySettingsPatch>,
     usage_export: Option<UsageExportSettingsPatch>,
+    external_notify: Option<ExternalNotifySettingsPatch>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -319,6 +389,22 @@ struct SendNotificationPayload {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SendExternalNotificationPayload {
+    title: Option<String>,
+    body: Option<String>,
+    level: Option<String>,
+    channel: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExternalNotifyResult {
+    ok: bool,
+    errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct OAuthLoginPayload {
     service: Option<String>,
     id: Option<String>,
@@ -374,6 +460,7 @@ fn main() {
             commands::get_version,
             commands::quit_app,
             commands::send_notification,
+            commands::send_external_notification,
             commands::oauth_login,
             commands::cancel_oauth_login,
             commands::import_claude_cli_credentials,
