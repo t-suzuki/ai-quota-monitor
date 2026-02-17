@@ -1,6 +1,6 @@
 use crate::store_repo::{read_store, write_store};
 use crate::error::AppResult;
-use crate::validation::validate_export_path;
+use crate::validation::{validate_discord_webhook_url, validate_export_path, validate_pushover_key};
 use tauri::AppHandle;
 
 pub fn get_settings(app: AppHandle) -> AppResult<crate::Settings> {
@@ -58,6 +58,74 @@ pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> AppRe
         }
         if current.enabled && current.path.is_none() {
             current.enabled = false;
+        }
+    }
+
+    if let Some(en) = payload.external_notify {
+        if let Some(discord) = en.discord {
+            let current = &mut store.settings.external_notify.discord;
+            if let Some(v) = discord.enabled {
+                current.enabled = v;
+            }
+            if let Some(url) = discord.webhook_url {
+                let trimmed = url.trim().to_string();
+                if trimmed.is_empty() {
+                    current.webhook_url = String::new();
+                } else {
+                    validate_discord_webhook_url(&trimmed)?;
+                    current.webhook_url = trimmed;
+                }
+            }
+            if let Some(v) = discord.critical {
+                current.critical = v;
+            }
+            if let Some(v) = discord.recovery {
+                current.recovery = v;
+            }
+            if let Some(v) = discord.warning {
+                current.warning = v;
+            }
+            if current.enabled && current.webhook_url.is_empty() {
+                current.enabled = false;
+            }
+        }
+        if let Some(pushover) = en.pushover {
+            let current = &mut store.settings.external_notify.pushover;
+            if let Some(v) = pushover.enabled {
+                current.enabled = v;
+            }
+            if let Some(token) = pushover.api_token {
+                let trimmed = token.trim().to_string();
+                if trimmed.is_empty() {
+                    current.api_token = String::new();
+                } else {
+                    validate_pushover_key(&trimmed, "Pushover API Token")?;
+                    current.api_token = trimmed;
+                }
+            }
+            if let Some(key) = pushover.user_key {
+                let trimmed = key.trim().to_string();
+                if trimmed.is_empty() {
+                    current.user_key = String::new();
+                } else {
+                    validate_pushover_key(&trimmed, "Pushover User Key")?;
+                    current.user_key = trimmed;
+                }
+            }
+            if let Some(v) = pushover.critical {
+                current.critical = v;
+            }
+            if let Some(v) = pushover.recovery {
+                current.recovery = v;
+            }
+            if let Some(v) = pushover.warning {
+                current.warning = v;
+            }
+            if current.enabled
+                && (current.api_token.is_empty() || current.user_key.is_empty())
+            {
+                current.enabled = false;
+            }
         }
     }
 

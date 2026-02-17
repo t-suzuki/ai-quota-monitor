@@ -25,6 +25,7 @@
     startWindowDrag: () => call('start_window_drag'),
     resizeWindowKeepTopLeft: (payload) => call('resize_window_keep_top_left', { payload }),
     sendNotification: (payload) => call('send_notification', { payload }),
+    sendExternalNotification: (payload) => call('send_external_notification', { payload }),
     getVersion: () => call('get_version'),
     quitApp: () => call('quit_app'),
     oauthLogin: (payload) => call('oauth_login', { payload }),

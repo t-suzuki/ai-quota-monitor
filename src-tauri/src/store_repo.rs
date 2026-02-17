@@ -61,6 +61,23 @@ fn default_store() -> crate::Store {
                 enabled: false,
                 path: None,
             },
+            external_notify: crate::ExternalNotifySettings {
+                discord: crate::DiscordSettings {
+                    enabled: false,
+                    webhook_url: String::new(),
+                    critical: true,
+                    recovery: true,
+                    warning: false,
+                },
+                pushover: crate::PushoverSettings {
+                    enabled: false,
+                    api_token: String::new(),
+                    user_key: String::new(),
+                    critical: true,
+                    recovery: true,
+                    warning: false,
+                },
+            },
         },
     }
 }
@@ -228,6 +245,37 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
         .filter(|s| !s.is_empty() && crate::validation::validate_export_path(s).is_ok());
     let export_enabled = export_raw.and_then(|e| e.enabled).unwrap_or(false) && export_path.is_some();
 
+    let en_raw = settings_raw.as_ref().and_then(|s| s.external_notify.as_ref());
+    let discord_raw = en_raw.and_then(|e| e.discord.as_ref());
+    let discord_webhook_url = discord_raw
+        .and_then(|d| d.webhook_url.as_deref())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && crate::validation::validate_discord_webhook_url(s).is_ok())
+        .unwrap_or_default();
+    let discord_enabled = discord_raw.and_then(|d| d.enabled).unwrap_or(false)
+        && !discord_webhook_url.is_empty();
+    let discord_critical = discord_raw.and_then(|d| d.critical).unwrap_or(true);
+    let discord_recovery = discord_raw.and_then(|d| d.recovery).unwrap_or(true);
+    let discord_warning = discord_raw.and_then(|d| d.warning).unwrap_or(false);
+
+    let pushover_raw = en_raw.and_then(|e| e.pushover.as_ref());
+    let pushover_api_token = pushover_raw
+        .and_then(|p| p.api_token.as_deref())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && crate::validation::validate_pushover_key(s, "token").is_ok())
+        .unwrap_or_default();
+    let pushover_user_key = pushover_raw
+        .and_then(|p| p.user_key.as_deref())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && crate::validation::validate_pushover_key(s, "key").is_ok())
+        .unwrap_or_default();
+    let pushover_enabled = pushover_raw.and_then(|p| p.enabled).unwrap_or(false)
+        && !pushover_api_token.is_empty()
+        && !pushover_user_key.is_empty();
+    let pushover_critical = pushover_raw.and_then(|p| p.critical).unwrap_or(true);
+    let pushover_recovery = pushover_raw.and_then(|p| p.recovery).unwrap_or(true);
+    let pushover_warning = pushover_raw.and_then(|p| p.warning).unwrap_or(false);
+
     crate::Store {
         services: crate::Services { claude, codex },
         settings: crate::Settings {
@@ -248,6 +296,23 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
             usage_export: crate::UsageExportSettings {
                 enabled: export_enabled,
                 path: export_path,
+            },
+            external_notify: crate::ExternalNotifySettings {
+                discord: crate::DiscordSettings {
+                    enabled: discord_enabled,
+                    webhook_url: discord_webhook_url,
+                    critical: discord_critical,
+                    recovery: discord_recovery,
+                    warning: discord_warning,
+                },
+                pushover: crate::PushoverSettings {
+                    enabled: pushover_enabled,
+                    api_token: pushover_api_token,
+                    user_key: pushover_user_key,
+                    critical: pushover_critical,
+                    recovery: pushover_recovery,
+                    warning: pushover_warning,
+                },
             },
         },
     }
