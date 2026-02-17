@@ -69,6 +69,8 @@ h1 span { color: var(--ok); }
 .ext-notify-section + .ext-notify-section { margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--bg3); }
 .ext-notify-header { font-size: 0.78rem !important; color: var(--fg) !important; font-weight: 600; }
 .ext-notify-triggers { display: flex; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+.ext-notify-row { margin-top: 6px; }
+.ext-notify-test-btn { margin-top: 6px; }
 
 /* Controls */
 .controls { display: flex; gap: 8px; align-items: center; margin: 16px 0; flex-wrap: wrap; }

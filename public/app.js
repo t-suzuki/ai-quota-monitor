@@ -1170,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.externalNotify.pushover.critical = Boolean($('#pushover-critical')?.checked);
     state.externalNotify.pushover.recovery = Boolean($('#pushover-recovery')?.checked);
     state.externalNotify.pushover.warning = Boolean($('#pushover-warning')?.checked);
-    window.quotaApi.setSettings({
+    return window.quotaApi.setSettings({
       externalNotify: {
         discord: {
           enabled: state.externalNotify.discord.enabled,
@@ -1207,7 +1207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('#btn-discord-test')?.addEventListener('click', async () => {
     try {
-      persistExternalNotifySettings();
+      await persistExternalNotifySettings();
       const result = await window.quotaApi.sendExternalNotification({
         title: 'テスト',
         body: 'AI Quota Monitor の Discord 通知が有効です',
@@ -1226,7 +1226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('#btn-pushover-test')?.addEventListener('click', async () => {
     try {
-      persistExternalNotifySettings();
+      await persistExternalNotifySettings();
       const result = await window.quotaApi.sendExternalNotification({
         title: 'テスト',
         body: 'AI Quota Monitor の Pushover 通知が有効です',

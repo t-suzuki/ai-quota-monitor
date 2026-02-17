@@ -121,32 +121,32 @@
     <div class="field ext-notify-section">
       <label class="ext-notify-header">Discord Webhook</label>
       <label class="check-label"><input type="checkbox" id="discord-enabled"> 有効</label>
-      <div class="row" style="margin-top:6px;">
+      <div class="row ext-notify-row">
         <input type="text" id="discord-webhook-url" placeholder="https://discord.com/api/webhooks/...">
       </div>
       <div class="help">サーバー設定 → 連携サービス → ウェブフック から URL を取得できます。</div>
       <div class="ext-notify-triggers">
         <label class="check-label"><input type="checkbox" id="discord-critical" checked> critical / exhausted</label>
-        <label class="check-label"><input type="checkbox" id="discord-recovery" checked> 回復 (critical → ok)</label>
+        <label class="check-label"><input type="checkbox" id="discord-recovery" checked> 回復 (critical/exhausted → ok)</label>
         <label class="check-label"><input type="checkbox" id="discord-warning"> warning</label>
       </div>
-      <button class="btn-mini" id="btn-discord-test" type="button" style="margin-top:6px;">テスト送信</button>
+      <button class="btn-mini ext-notify-test-btn" id="btn-discord-test" type="button">テスト送信</button>
     </div>
 
     <div class="field ext-notify-section">
       <label class="ext-notify-header">Pushover</label>
       <label class="check-label"><input type="checkbox" id="pushover-enabled"> 有効</label>
-      <div class="row" style="margin-top:6px;">
+      <div class="row ext-notify-row">
         <input type="text" id="pushover-api-token" placeholder="API Token (Application)">
         <input type="text" id="pushover-user-key" placeholder="User Key">
       </div>
       <div class="help">pushover.net でアプリを作成して API Token を取得し、User Key と合わせて設定してください。</div>
       <div class="ext-notify-triggers">
         <label class="check-label"><input type="checkbox" id="pushover-critical" checked> critical / exhausted</label>
-        <label class="check-label"><input type="checkbox" id="pushover-recovery" checked> 回復 (critical → ok)</label>
+        <label class="check-label"><input type="checkbox" id="pushover-recovery" checked> 回復 (critical/exhausted → ok)</label>
         <label class="check-label"><input type="checkbox" id="pushover-warning"> warning</label>
       </div>
-      <button class="btn-mini" id="btn-pushover-test" type="button" style="margin-top:6px;">テスト送信</button>
+      <button class="btn-mini ext-notify-test-btn" id="btn-pushover-test" type="button">テスト送信</button>
     </div>
   </details>
 
