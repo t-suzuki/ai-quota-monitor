@@ -17,8 +17,8 @@ const state = {
   history: {},    // { 'serviceKey:windowName': [util1, util2, ...] }
   notifySettings: { critical: true, recovery: true, warning: false, thresholdWarning: 75, thresholdCritical: 90 },
   externalNotify: {
-    discord: { enabled: false, webhookUrl: '' },
-    pushover: { enabled: false, apiToken: '', userKey: '' },
+    discord: { enabled: false, webhookUrl: '', critical: true, recovery: true, warning: false },
+    pushover: { enabled: false, apiToken: '', userKey: '', critical: true, recovery: true, warning: false },
   },
   usageExport: { enabled: false, path: '' },
 };
@@ -150,25 +150,46 @@ function formatReset(epoch) {
   return `${timeStr} (あと${m}分)`;
 }
 
-async function notify(title, body, level) {
+async function notifyDesktop(title, body) {
   await window.quotaApi.sendNotification({ title, body });
-  const en = state.externalNotify;
-  if (en.discord.enabled || en.pushover.enabled) {
-    window.quotaApi.sendExternalNotification({ title, body, level: level || '' }).catch((e) => {
-      log(`外部通知送信エラー: ${toErrorMessage(e)}`, 'warn');
-    });
-  }
   return true;
 }
 
+function sendExternalChannelNotifications(prev, next, label, windows) {
+  const en = state.externalNotify;
+  const channels = [
+    { key: 'discord', settings: en.discord },
+    { key: 'pushover', settings: en.pushover },
+  ];
+  for (const { key, settings } of channels) {
+    if (!settings.enabled) continue;
+    const channelEffects = buildTransitionEffects(prev, next, label, windows, {
+      critical: settings.critical,
+      recovery: settings.recovery,
+      warning: settings.warning,
+    });
+    for (const item of channelEffects.notifications) {
+      window.quotaApi.sendExternalNotification({
+        title: item.title, body: item.body, level: next, channel: key,
+      }).catch((e) => {
+        log(`外部通知送信エラー (${key}): ${toErrorMessage(e)}`, 'warn');
+      });
+    }
+  }
+}
+
 function checkStatusTransition(prev, next, label, windows) {
-  const effects = buildTransitionEffects(prev, next, label, windows, state.notifySettings);
-  for (const item of effects.notifications) {
-    notify(item.title, item.body, next).catch((e) => {
+  // Desktop notifications
+  const desktopEffects = buildTransitionEffects(prev, next, label, windows, state.notifySettings);
+  for (const item of desktopEffects.notifications) {
+    notifyDesktop(item.title, item.body).catch((e) => {
       log(`通知送信エラー: ${toErrorMessage(e)}`, 'warn');
     });
   }
-  for (const item of effects.logs) {
+  // External channel notifications (each with its own trigger settings)
+  sendExternalChannelNotifications(prev, next, label, windows);
+  // Logs (always based on desktop effects)
+  for (const item of desktopEffects.logs) {
     log(item.message, item.level);
   }
 }
@@ -984,11 +1005,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (en.discord) {
         if (typeof en.discord.enabled === 'boolean') state.externalNotify.discord.enabled = en.discord.enabled;
         if (typeof en.discord.webhookUrl === 'string') state.externalNotify.discord.webhookUrl = en.discord.webhookUrl;
+        if (typeof en.discord.critical === 'boolean') state.externalNotify.discord.critical = en.discord.critical;
+        if (typeof en.discord.recovery === 'boolean') state.externalNotify.discord.recovery = en.discord.recovery;
+        if (typeof en.discord.warning === 'boolean') state.externalNotify.discord.warning = en.discord.warning;
       }
       if (en.pushover) {
         if (typeof en.pushover.enabled === 'boolean') state.externalNotify.pushover.enabled = en.pushover.enabled;
         if (typeof en.pushover.apiToken === 'string') state.externalNotify.pushover.apiToken = en.pushover.apiToken;
         if (typeof en.pushover.userKey === 'string') state.externalNotify.pushover.userKey = en.pushover.userKey;
+        if (typeof en.pushover.critical === 'boolean') state.externalNotify.pushover.critical = en.pushover.critical;
+        if (typeof en.pushover.recovery === 'boolean') state.externalNotify.pushover.recovery = en.pushover.recovery;
+        if (typeof en.pushover.warning === 'boolean') state.externalNotify.pushover.warning = en.pushover.warning;
       }
     }
     if (settings?.usageExport) {
@@ -1099,7 +1126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#threshold-critical').addEventListener('change', persistNotifySettings);
   $('#btn-notify-test').addEventListener('click', async () => {
     try {
-      await notify('テスト', 'AI Quota Monitor の通知が有効です');
+      await notifyDesktop('テスト', 'AI Quota Monitor の通知が有効です');
       log('テスト通知を送信しました', 'ok');
     } catch (e) {
       log(`通知テストに失敗しました: ${toErrorMessage(e)}`, 'warn');
@@ -1112,26 +1139,53 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pushoverEnabledEl = $('#pushover-enabled');
   const pushoverTokenEl = $('#pushover-api-token');
   const pushoverKeyEl = $('#pushover-user-key');
+  const discordCriticalEl = $('#discord-critical');
+  const discordRecoveryEl = $('#discord-recovery');
+  const discordWarningEl = $('#discord-warning');
+  const pushoverCriticalEl = $('#pushover-critical');
+  const pushoverRecoveryEl = $('#pushover-recovery');
+  const pushoverWarningEl = $('#pushover-warning');
   if (discordEnabledEl) discordEnabledEl.checked = state.externalNotify.discord.enabled;
   if (discordUrlEl) discordUrlEl.value = state.externalNotify.discord.webhookUrl;
+  if (discordCriticalEl) discordCriticalEl.checked = state.externalNotify.discord.critical;
+  if (discordRecoveryEl) discordRecoveryEl.checked = state.externalNotify.discord.recovery;
+  if (discordWarningEl) discordWarningEl.checked = state.externalNotify.discord.warning;
   if (pushoverEnabledEl) pushoverEnabledEl.checked = state.externalNotify.pushover.enabled;
   if (pushoverTokenEl) pushoverTokenEl.value = state.externalNotify.pushover.apiToken;
   if (pushoverKeyEl) pushoverKeyEl.value = state.externalNotify.pushover.userKey;
+  if (pushoverCriticalEl) pushoverCriticalEl.checked = state.externalNotify.pushover.critical;
+  if (pushoverRecoveryEl) pushoverRecoveryEl.checked = state.externalNotify.pushover.recovery;
+  if (pushoverWarningEl) pushoverWarningEl.checked = state.externalNotify.pushover.warning;
 
   let didLogExtNotifyPersistError = false;
   const persistExternalNotifySettings = () => {
     state.externalNotify.discord.enabled = Boolean($('#discord-enabled')?.checked);
     state.externalNotify.discord.webhookUrl = String($('#discord-webhook-url')?.value || '').trim();
+    state.externalNotify.discord.critical = Boolean($('#discord-critical')?.checked);
+    state.externalNotify.discord.recovery = Boolean($('#discord-recovery')?.checked);
+    state.externalNotify.discord.warning = Boolean($('#discord-warning')?.checked);
     state.externalNotify.pushover.enabled = Boolean($('#pushover-enabled')?.checked);
     state.externalNotify.pushover.apiToken = String($('#pushover-api-token')?.value || '').trim();
     state.externalNotify.pushover.userKey = String($('#pushover-user-key')?.value || '').trim();
+    state.externalNotify.pushover.critical = Boolean($('#pushover-critical')?.checked);
+    state.externalNotify.pushover.recovery = Boolean($('#pushover-recovery')?.checked);
+    state.externalNotify.pushover.warning = Boolean($('#pushover-warning')?.checked);
     window.quotaApi.setSettings({
       externalNotify: {
-        discord: { enabled: state.externalNotify.discord.enabled, webhookUrl: state.externalNotify.discord.webhookUrl },
+        discord: {
+          enabled: state.externalNotify.discord.enabled,
+          webhookUrl: state.externalNotify.discord.webhookUrl,
+          critical: state.externalNotify.discord.critical,
+          recovery: state.externalNotify.discord.recovery,
+          warning: state.externalNotify.discord.warning,
+        },
         pushover: {
           enabled: state.externalNotify.pushover.enabled,
           apiToken: state.externalNotify.pushover.apiToken,
           userKey: state.externalNotify.pushover.userKey,
+          critical: state.externalNotify.pushover.critical,
+          recovery: state.externalNotify.pushover.recovery,
+          warning: state.externalNotify.pushover.warning,
         },
       },
     }).then(() => {
@@ -1143,11 +1197,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   };
-  if (discordEnabledEl) discordEnabledEl.addEventListener('change', persistExternalNotifySettings);
-  if (discordUrlEl) discordUrlEl.addEventListener('change', persistExternalNotifySettings);
-  if (pushoverEnabledEl) pushoverEnabledEl.addEventListener('change', persistExternalNotifySettings);
-  if (pushoverTokenEl) pushoverTokenEl.addEventListener('change', persistExternalNotifySettings);
-  if (pushoverKeyEl) pushoverKeyEl.addEventListener('change', persistExternalNotifySettings);
+  const extNotifyInputs = [
+    discordEnabledEl, discordUrlEl, discordCriticalEl, discordRecoveryEl, discordWarningEl,
+    pushoverEnabledEl, pushoverTokenEl, pushoverKeyEl, pushoverCriticalEl, pushoverRecoveryEl, pushoverWarningEl,
+  ];
+  for (const el of extNotifyInputs) {
+    if (el) el.addEventListener('change', persistExternalNotifySettings);
+  }
 
   $('#btn-discord-test')?.addEventListener('click', async () => {
     try {

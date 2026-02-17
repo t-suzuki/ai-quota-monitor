@@ -103,6 +103,9 @@ struct UsageExportSettings {
 struct DiscordSettings {
     enabled: bool,
     webhook_url: String,
+    critical: bool,
+    recovery: bool,
+    warning: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,6 +114,9 @@ struct PushoverSettings {
     enabled: bool,
     api_token: String,
     user_key: String,
+    critical: bool,
+    recovery: bool,
+    warning: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +203,9 @@ struct UsageExportSettingsRaw {
 struct DiscordSettingsRaw {
     enabled: Option<bool>,
     webhook_url: Option<String>,
+    critical: Option<bool>,
+    recovery: Option<bool>,
+    warning: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -205,6 +214,9 @@ struct PushoverSettingsRaw {
     enabled: Option<bool>,
     api_token: Option<String>,
     user_key: Option<String>,
+    critical: Option<bool>,
+    recovery: Option<bool>,
+    warning: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -291,6 +303,9 @@ struct UsageExportSettingsPatch {
 struct DiscordSettingsPatch {
     enabled: Option<bool>,
     webhook_url: Option<String>,
+    critical: Option<bool>,
+    recovery: Option<bool>,
+    warning: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -299,6 +314,9 @@ struct PushoverSettingsPatch {
     enabled: Option<bool>,
     api_token: Option<String>,
     user_key: Option<String>,
+    critical: Option<bool>,
+    recovery: Option<bool>,
+    warning: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

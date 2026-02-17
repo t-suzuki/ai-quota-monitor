@@ -76,6 +76,15 @@ pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> AppRe
                     current.webhook_url = trimmed;
                 }
             }
+            if let Some(v) = discord.critical {
+                current.critical = v;
+            }
+            if let Some(v) = discord.recovery {
+                current.recovery = v;
+            }
+            if let Some(v) = discord.warning {
+                current.warning = v;
+            }
             if current.enabled && current.webhook_url.is_empty() {
                 current.enabled = false;
             }
@@ -102,6 +111,15 @@ pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> AppRe
                     validate_pushover_key(&trimmed, "Pushover User Key")?;
                     current.user_key = trimmed;
                 }
+            }
+            if let Some(v) = pushover.critical {
+                current.critical = v;
+            }
+            if let Some(v) = pushover.recovery {
+                current.recovery = v;
+            }
+            if let Some(v) = pushover.warning {
+                current.warning = v;
             }
             if current.enabled
                 && (current.api_token.is_empty() || current.user_key.is_empty())

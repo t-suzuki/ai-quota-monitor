@@ -65,11 +65,17 @@ fn default_store() -> crate::Store {
                 discord: crate::DiscordSettings {
                     enabled: false,
                     webhook_url: String::new(),
+                    critical: true,
+                    recovery: true,
+                    warning: false,
                 },
                 pushover: crate::PushoverSettings {
                     enabled: false,
                     api_token: String::new(),
                     user_key: String::new(),
+                    critical: true,
+                    recovery: true,
+                    warning: false,
                 },
             },
         },
@@ -248,6 +254,9 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
         .unwrap_or_default();
     let discord_enabled = discord_raw.and_then(|d| d.enabled).unwrap_or(false)
         && !discord_webhook_url.is_empty();
+    let discord_critical = discord_raw.and_then(|d| d.critical).unwrap_or(true);
+    let discord_recovery = discord_raw.and_then(|d| d.recovery).unwrap_or(true);
+    let discord_warning = discord_raw.and_then(|d| d.warning).unwrap_or(false);
 
     let pushover_raw = en_raw.and_then(|e| e.pushover.as_ref());
     let pushover_api_token = pushover_raw
@@ -263,6 +272,9 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
     let pushover_enabled = pushover_raw.and_then(|p| p.enabled).unwrap_or(false)
         && !pushover_api_token.is_empty()
         && !pushover_user_key.is_empty();
+    let pushover_critical = pushover_raw.and_then(|p| p.critical).unwrap_or(true);
+    let pushover_recovery = pushover_raw.and_then(|p| p.recovery).unwrap_or(true);
+    let pushover_warning = pushover_raw.and_then(|p| p.warning).unwrap_or(false);
 
     crate::Store {
         services: crate::Services { claude, codex },
@@ -289,11 +301,17 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
                 discord: crate::DiscordSettings {
                     enabled: discord_enabled,
                     webhook_url: discord_webhook_url,
+                    critical: discord_critical,
+                    recovery: discord_recovery,
+                    warning: discord_warning,
                 },
                 pushover: crate::PushoverSettings {
                     enabled: pushover_enabled,
                     api_token: pushover_api_token,
                     user_key: pushover_user_key,
+                    critical: pushover_critical,
+                    recovery: pushover_recovery,
+                    warning: pushover_warning,
                 },
             },
         },
