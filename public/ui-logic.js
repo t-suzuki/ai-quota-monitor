@@ -37,12 +37,30 @@
     }, 'ok');
   }
 
-  function buildTransitionEffects(prev, next, label, windows, notifySettings) {
+  function formatResetCompact(resetsAt, nowMs = Date.now()) {
+    if (!resetsAt) return '';
+    const resetMs = typeof resetsAt === 'number' ? resetsAt * 1000 : Date.parse(resetsAt);
+    if (!Number.isFinite(resetMs)) return '';
+    const diff = resetMs - nowMs;
+    if (diff <= 0) return 'リセット済み';
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    if (h >= 24) return `あと${Math.floor(h / 24)}日${h % 24}時間でリセット`;
+    if (h > 0) return `あと${h}時間${m}分でリセット`;
+    return `あと${m}分でリセット`;
+  }
+
+  function buildTransitionEffects(prev, next, label, windows, notifySettings, nowMs) {
     if (!prev || prev === next) return { notifications: [], logs: [] };
 
     const notifications = [];
     const logs = [];
-    const detail = windows.map((windowInfo) => `${windowInfo.name}: ${windowInfo.utilization}%`).join(', ');
+    const detail = windows.map((windowInfo) => {
+      let s = `${windowInfo.name}: ${windowInfo.utilization}%`;
+      const resetLabel = formatResetCompact(windowInfo.resetsAt, nowMs);
+      if (resetLabel) s += ` (${resetLabel})`;
+      return s;
+    }).join(', ');
 
     if ((next === 'critical' || next === 'exhausted') && notifySettings.critical) {
       notifications.push({
@@ -61,7 +79,7 @@
     if (next === 'ok' && (prev === 'critical' || prev === 'exhausted') && notifySettings.recovery) {
       notifications.push({
         title: `${label} ✅`,
-        body: 'クォータが回復しました',
+        body: `クォータが回復しました — ${detail}`,
       });
     }
 
@@ -142,6 +160,7 @@
     classifyWindows,
     deriveServiceStatus,
     buildTransitionEffects,
+    formatResetCompact,
     deriveTokenInputValue,
     normalizeAccountToken,
     calcElapsedPct,

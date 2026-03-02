@@ -6,6 +6,7 @@ const {
   classifyWindows,
   deriveServiceStatus,
   buildTransitionEffects,
+  formatResetCompact,
   deriveTokenInputValue,
   normalizeAccountToken,
   calcElapsedPct,
@@ -77,13 +78,14 @@ test('buildTransitionEffects suppresses warning after critical/exhausted', () =>
   assert.deepEqual(effects.logs, []);
 });
 
-test('buildTransitionEffects emits recovery notification and log', () => {
+test('buildTransitionEffects emits recovery notification with detail and log', () => {
   const windows = [{ name: '5時間', utilization: 10 }];
 
   const effects = buildTransitionEffects('exhausted', 'ok', 'Codex: C', windows, BASE_NOTIFY);
 
   assert.equal(effects.notifications.length, 1);
   assert.match(effects.notifications[0].title, /✅/);
+  assert.match(effects.notifications[0].body, /クォータが回復しました — 5時間: 10%/);
   assert.deepEqual(effects.logs, [{ level: 'ok', message: 'Codex: C → ok (回復)' }]);
 });
 
@@ -145,6 +147,61 @@ test('normalizeAccountToken extracts token when auth JSON is pasted', () => {
 
   assert.equal(codexToken, 'sk-codex-abc');
   assert.equal(claudeToken, 'claude-xyz');
+});
+
+test('formatResetCompact returns human-readable remaining time', () => {
+  const nowMs = 1000000;
+  // 2 hours 30 minutes from now (in epoch seconds)
+  const resetsAt = (nowMs + 2 * 3600000 + 30 * 60000) / 1000;
+  assert.equal(formatResetCompact(resetsAt, nowMs), 'あと2時間30分でリセット');
+
+  // 45 minutes from now
+  const soon = (nowMs + 45 * 60000) / 1000;
+  assert.equal(formatResetCompact(soon, nowMs), 'あと45分でリセット');
+
+  // 2 days 3 hours from now
+  const far = (nowMs + 2 * 86400000 + 3 * 3600000) / 1000;
+  assert.equal(formatResetCompact(far, nowMs), 'あと2日3時間でリセット');
+});
+
+test('formatResetCompact handles edge cases', () => {
+  assert.equal(formatResetCompact(null), '');
+  assert.equal(formatResetCompact(undefined), '');
+  assert.equal(formatResetCompact('invalid-date'), '');
+  // Past reset time
+  const nowMs = 1000000;
+  const past = (nowMs - 60000) / 1000;
+  assert.equal(formatResetCompact(past, nowMs), 'リセット済み');
+});
+
+test('formatResetCompact supports ISO datetime string', () => {
+  const nowMs = Date.parse('2026-03-02T12:00:00Z');
+  assert.equal(
+    formatResetCompact('2026-03-02T14:30:00Z', nowMs),
+    'あと2時間30分でリセット',
+  );
+});
+
+test('buildTransitionEffects includes reset time in critical notification', () => {
+  const nowMs = 1000000;
+  const resetsAt = (nowMs + 2 * 3600000 + 30 * 60000) / 1000;
+  const windows = [{ name: '5時間', utilization: 95, resetsAt }];
+
+  const effects = buildTransitionEffects('ok', 'critical', 'Claude: A', windows, BASE_NOTIFY, nowMs);
+
+  assert.equal(effects.notifications.length, 1);
+  assert.match(effects.notifications[0].body, /5時間: 95% \(あと2時間30分でリセット\)/);
+});
+
+test('buildTransitionEffects includes reset time in recovery notification', () => {
+  const nowMs = 1000000;
+  const resetsAt = (nowMs + 3 * 3600000) / 1000;
+  const windows = [{ name: '5時間', utilization: 10, resetsAt }];
+
+  const effects = buildTransitionEffects('exhausted', 'ok', 'Codex: B', windows, BASE_NOTIFY, nowMs);
+
+  assert.equal(effects.notifications.length, 1);
+  assert.match(effects.notifications[0].body, /クォータが回復しました — 5時間: 10% \(あと3時間0分でリセット\)/);
 });
 
 test('calcElapsedPct supports epoch seconds and ISO datetime', () => {
