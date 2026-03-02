@@ -7,6 +7,7 @@ const {
   deriveServiceStatus,
   buildTransitionEffects,
   formatResetCompact,
+  formatRecoveryWindowNote,
   deriveTokenInputValue,
   normalizeAccountToken,
   calcElapsedPct,
@@ -248,4 +249,46 @@ test('computePollingState returns progress and display metadata', () => {
   assert.equal(safe.remainingSecLabel, 100);
   assert.equal(safe.color, 'var(--ok)');
   assert.ok(safe.fraction > 0.3);
+});
+
+test('formatRecoveryWindowNote returns recovery info for 5-hour window', () => {
+  const windows = [{ windowSeconds: 18000 }];
+  assert.equal(formatRecoveryWindowNote(windows), '\n使用量は次回使用開始から5時間で回復します');
+});
+
+test('formatRecoveryWindowNote picks shortest window when multiple exist', () => {
+  const windows = [{ windowSeconds: 604800 }, { windowSeconds: 18000 }];
+  assert.equal(formatRecoveryWindowNote(windows), '\n使用量は次回使用開始から5時間で回復します');
+});
+
+test('formatRecoveryWindowNote returns empty string when no windowSeconds', () => {
+  const windows = [{ name: '5時間', utilization: 91 }];
+  assert.equal(formatRecoveryWindowNote(windows), '');
+});
+
+test('buildTransitionEffects includes recovery note in critical notification with windowSeconds', () => {
+  const windows = [{ name: '5時間', utilization: 95, windowSeconds: 18000 }];
+  const effects = buildTransitionEffects('ok', 'critical', 'Claude: A', windows, BASE_NOTIFY);
+
+  assert.equal(effects.notifications.length, 1);
+  assert.match(effects.notifications[0].body, /ステータス: critical/);
+  assert.match(effects.notifications[0].body, /使用量は次回使用開始から5時間で回復します/);
+});
+
+test('buildTransitionEffects includes recovery note in warning notification with windowSeconds', () => {
+  const windows = [{ name: '5時間', utilization: 80, windowSeconds: 18000 }];
+  const effects = buildTransitionEffects('ok', 'warning', 'Claude: A', windows, BASE_NOTIFY);
+
+  assert.equal(effects.notifications.length, 1);
+  assert.match(effects.notifications[0].body, /ステータス: warning/);
+  assert.match(effects.notifications[0].body, /使用量は次回使用開始から5時間で回復します/);
+});
+
+test('buildTransitionEffects does NOT include recovery note in recovery notification', () => {
+  const windows = [{ name: '5時間', utilization: 10, windowSeconds: 18000 }];
+  const effects = buildTransitionEffects('exhausted', 'ok', 'Codex: C', windows, BASE_NOTIFY);
+
+  assert.equal(effects.notifications.length, 1);
+  assert.match(effects.notifications[0].body, /クォータが回復しました/);
+  assert.ok(!effects.notifications[0].body.includes('次回使用開始から'));
 });

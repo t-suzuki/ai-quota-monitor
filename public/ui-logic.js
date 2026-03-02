@@ -50,6 +50,18 @@
     return `あと${m}分でリセット`;
   }
 
+  function formatRecoveryWindowNote(windows) {
+    const seconds = windows
+      .map((w) => w.windowSeconds)
+      .filter((s) => typeof s === 'number' && Number.isFinite(s) && s > 0);
+    if (seconds.length === 0) return '';
+    const minSec = Math.min(...seconds);
+    const h = Math.round(minSec / 3600);
+    if (h > 0) return `\n使用量は次回使用開始から${h}時間で回復します`;
+    const m = Math.round(minSec / 60);
+    return `\n使用量は次回使用開始から${m}分で回復します`;
+  }
+
   function buildTransitionEffects(prev, next, label, windows, notifySettings, nowMs) {
     if (!prev || prev === next) return { notifications: [], logs: [] };
 
@@ -62,17 +74,19 @@
       return s;
     }).join(', ');
 
+    const recoveryNote = formatRecoveryWindowNote(windows);
+
     if ((next === 'critical' || next === 'exhausted') && notifySettings.critical) {
       notifications.push({
         title: `${label} ⚠️`,
-        body: `ステータス: ${next} — ${detail}`,
+        body: `ステータス: ${next} — ${detail}${recoveryNote}`,
       });
     }
 
     if (next === 'warning' && prev !== 'critical' && prev !== 'exhausted' && notifySettings.warning) {
       notifications.push({
         title: `${label} ⚠`,
-        body: `ステータス: ${next} — ${detail}`,
+        body: `ステータス: ${next} — ${detail}${recoveryNote}`,
       });
     }
 
@@ -161,6 +175,7 @@
     deriveServiceStatus,
     buildTransitionEffects,
     formatResetCompact,
+    formatRecoveryWindowNote,
     deriveTokenInputValue,
     normalizeAccountToken,
     calcElapsedPct,
