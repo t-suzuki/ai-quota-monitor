@@ -6,6 +6,8 @@ const {
   classifyWindows,
   deriveServiceStatus,
   buildTransitionEffects,
+  formatResetRemaining,
+  buildResetSummary,
   deriveTokenInputValue,
   normalizeAccountToken,
   calcElapsedPct,
@@ -66,6 +68,41 @@ test('buildTransitionEffects emits critical notification and log', () => {
   assert.match(effects.notifications[0].title, /⚠️/);
   assert.match(effects.notifications[0].body, /ステータス: critical/);
   assert.deepEqual(effects.logs, [{ level: 'crit', message: 'Claude Code: A → critical' }]);
+});
+
+test('buildTransitionEffects includes reset time in critical notification', () => {
+  const nowMs = 1000000;
+  // resetsAt 2 hours and 30 minutes from now (epoch seconds)
+  const resetsAt = (nowMs / 1000) + 2 * 3600 + 30 * 60;
+  const windows = [{ name: '5時間', utilization: 95, resetsAt }];
+
+  const effects = buildTransitionEffects('ok', 'critical', 'Claude: A', windows, BASE_NOTIFY, nowMs);
+
+  assert.equal(effects.notifications.length, 1);
+  assert.match(effects.notifications[0].body, /あと2時間30分でリセット/);
+});
+
+test('buildTransitionEffects includes reset time in warning notification', () => {
+  const nowMs = 1000000;
+  const resetsAt = (nowMs / 1000) + 45 * 60; // 45 minutes from now
+  const windows = [{ name: '5時間', utilization: 80, resetsAt }];
+
+  const effects = buildTransitionEffects('ok', 'warning', 'Claude: B', windows, BASE_NOTIFY, nowMs);
+
+  assert.equal(effects.notifications.length, 1);
+  assert.match(effects.notifications[0].body, /あと45分でリセット/);
+});
+
+test('buildTransitionEffects does not include reset time in recovery notification', () => {
+  const nowMs = 1000000;
+  const resetsAt = (nowMs / 1000) + 3600;
+  const windows = [{ name: '5時間', utilization: 10, resetsAt }];
+
+  const effects = buildTransitionEffects('exhausted', 'ok', 'Codex: C', windows, BASE_NOTIFY, nowMs);
+
+  assert.equal(effects.notifications.length, 1);
+  assert.match(effects.notifications[0].body, /クォータが回復しました/);
+  assert.equal(effects.notifications[0].body.includes('リセット'), false);
 });
 
 test('buildTransitionEffects suppresses warning after critical/exhausted', () => {
@@ -145,6 +182,59 @@ test('normalizeAccountToken extracts token when auth JSON is pasted', () => {
 
   assert.equal(codexToken, 'sk-codex-abc');
   assert.equal(claudeToken, 'claude-xyz');
+});
+
+test('formatResetRemaining formats hours and minutes', () => {
+  const nowMs = 1000000;
+  // 2h 30m from now
+  const resetsAt = (nowMs / 1000) + 2 * 3600 + 30 * 60;
+  assert.equal(formatResetRemaining(resetsAt, nowMs), 'あと2時間30分でリセット');
+});
+
+test('formatResetRemaining formats days when >= 24h', () => {
+  const nowMs = 1000000;
+  // 1 day 3 hours from now
+  const resetsAt = (nowMs / 1000) + 27 * 3600;
+  assert.equal(formatResetRemaining(resetsAt, nowMs), 'あと1日3時間でリセット');
+});
+
+test('formatResetRemaining formats minutes only when < 1h', () => {
+  const nowMs = 1000000;
+  const resetsAt = (nowMs / 1000) + 15 * 60;
+  assert.equal(formatResetRemaining(resetsAt, nowMs), 'あと15分でリセット');
+});
+
+test('formatResetRemaining returns reset done when past', () => {
+  const nowMs = 1000000;
+  const resetsAt = (nowMs / 1000) - 60;
+  assert.equal(formatResetRemaining(resetsAt, nowMs), 'リセット済み');
+});
+
+test('formatResetRemaining returns empty for null/invalid', () => {
+  assert.equal(formatResetRemaining(null, Date.now()), '');
+  assert.equal(formatResetRemaining('invalid', Date.now()), '');
+});
+
+test('formatResetRemaining supports ISO datetime string', () => {
+  const nowMs = Date.parse('2026-03-02T10:00:00Z');
+  const resetsAt = '2026-03-02T12:30:00Z';
+  assert.equal(formatResetRemaining(resetsAt, nowMs), 'あと2時間30分でリセット');
+});
+
+test('buildResetSummary combines multiple windows', () => {
+  const nowMs = 1000000;
+  const windows = [
+    { name: '5時間', resetsAt: (nowMs / 1000) + 2 * 3600 },
+    { name: '日次', resetsAt: (nowMs / 1000) + 10 * 3600 },
+  ];
+  const result = buildResetSummary(windows, nowMs);
+  assert.match(result, /5時間: あと2時間0分でリセット/);
+  assert.match(result, /日次: あと10時間0分でリセット/);
+});
+
+test('buildResetSummary returns empty when no resetsAt', () => {
+  const windows = [{ name: '5時間', utilization: 80 }];
+  assert.equal(buildResetSummary(windows, Date.now()), '');
 });
 
 test('calcElapsedPct supports epoch seconds and ISO datetime', () => {

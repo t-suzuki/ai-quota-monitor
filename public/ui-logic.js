@@ -37,7 +37,31 @@
     }, 'ok');
   }
 
-  function buildTransitionEffects(prev, next, label, windows, notifySettings) {
+  function formatResetRemaining(resetsAt, nowMs) {
+    if (!resetsAt) return '';
+    const resetMs = typeof resetsAt === 'number' ? resetsAt * 1000 : Date.parse(resetsAt);
+    if (!Number.isFinite(resetMs)) return '';
+    const diff = resetMs - nowMs;
+    if (diff <= 0) return 'リセット済み';
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    if (h >= 24) return `あと${Math.floor(h / 24)}日${h % 24}時間でリセット`;
+    if (h > 0) return `あと${h}時間${m}分でリセット`;
+    return `あと${m}分でリセット`;
+  }
+
+  function buildResetSummary(windows, nowMs) {
+    if (!windows || windows.length === 0) return '';
+    const now = nowMs != null ? nowMs : Date.now();
+    const parts = [];
+    for (const w of windows) {
+      const text = formatResetRemaining(w.resetsAt, now);
+      if (text) parts.push(`${w.name}: ${text}`);
+    }
+    return parts.length > 0 ? '\n' + parts.join(', ') : '';
+  }
+
+  function buildTransitionEffects(prev, next, label, windows, notifySettings, nowMs) {
     if (!prev || prev === next) return { notifications: [], logs: [] };
 
     const notifications = [];
@@ -45,16 +69,18 @@
     const detail = windows.map((windowInfo) => `${windowInfo.name}: ${windowInfo.utilization}%`).join(', ');
 
     if ((next === 'critical' || next === 'exhausted') && notifySettings.critical) {
+      const resetInfo = buildResetSummary(windows, nowMs);
       notifications.push({
         title: `${label} ⚠️`,
-        body: `ステータス: ${next} — ${detail}`,
+        body: `ステータス: ${next} — ${detail}${resetInfo}`,
       });
     }
 
     if (next === 'warning' && prev !== 'critical' && prev !== 'exhausted' && notifySettings.warning) {
+      const resetInfo = buildResetSummary(windows, nowMs);
       notifications.push({
         title: `${label} ⚠`,
-        body: `ステータス: ${next} — ${detail}`,
+        body: `ステータス: ${next} — ${detail}${resetInfo}`,
       });
     }
 
@@ -142,6 +168,8 @@
     classifyWindows,
     deriveServiceStatus,
     buildTransitionEffects,
+    formatResetRemaining,
+    buildResetSummary,
     deriveTokenInputValue,
     normalizeAccountToken,
     calcElapsedPct,
