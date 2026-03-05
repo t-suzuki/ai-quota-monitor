@@ -3,7 +3,7 @@ use crate::validation::{validate_token, validate_upstream_url};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::Serialize;
 use serde_json::Value;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use thiserror::Error;
 
 const CLAUDE_USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
@@ -22,6 +22,24 @@ struct RawUpstream {
     status: u16,
     content_type: String,
     body: String,
+    retry_after_secs: Option<u64>,
+}
+
+fn parse_retry_after(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    let value = headers.get("retry-after")?.to_str().ok()?;
+    let trimmed = value.trim();
+    // Try integer seconds first
+    if let Ok(secs) = trimmed.parse::<u64>() {
+        return Some(secs);
+    }
+    // Try HTTP-date (RFC 2822-like) format e.g. "Thu, 01 Jan 2026 00:00:00 GMT"
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc2822(trimmed) {
+        let target = SystemTime::UNIX_EPOCH + Duration::from_secs(dt.timestamp().max(0) as u64);
+        if let Ok(remaining) = target.duration_since(SystemTime::now()) {
+            return Some(remaining.as_secs());
+        }
+    }
+    None
 }
 
 #[derive(Debug, Error)]
@@ -42,12 +60,12 @@ pub enum ApiError {
     Upstream(String),
 }
 
-pub(crate) fn build_error_message(status: u16, content_type: &str) -> String {
+pub(crate) fn build_error_message(status: u16, content_type: &str, retry_after_secs: Option<u64>) -> String {
     if status == 403 && content_type.contains("text/html") {
         return "Upstream blocked request (OpenAI edge / Cloudflare)".to_string();
     }
 
-    match status {
+    let base = match status {
         400 => "Upstream rejected request (HTTP 400)".to_string(),
         401 => "Authentication failed (HTTP 401)".to_string(),
         403 => "Permission denied by upstream (HTTP 403)".to_string(),
@@ -55,7 +73,15 @@ pub(crate) fn build_error_message(status: u16, content_type: &str) -> String {
         429 => "Upstream rate limit exceeded (HTTP 429)".to_string(),
         500..=599 => format!("Upstream server error (HTTP {status})"),
         _ => format!("Upstream request failed (HTTP {status})"),
+    };
+
+    if status == 429 {
+        if let Some(secs) = retry_after_secs {
+            return format!("{base} [retry-after:{secs}]");
+        }
     }
+
+    base
 }
 
 async fn fetch_usage_raw(url: &str, headers: HeaderMap) -> Result<RawUpstream, ApiError> {
@@ -80,6 +106,7 @@ async fn fetch_usage_raw(url: &str, headers: HeaderMap) -> Result<RawUpstream, A
         .and_then(|v| v.to_str().ok())
         .unwrap_or("application/json")
         .to_string();
+    let retry_after_secs = parse_retry_after(response.headers());
     let body = response.text().await.map_err(ApiError::ResponseBody)?;
 
     Ok(RawUpstream {
@@ -87,6 +114,7 @@ async fn fetch_usage_raw(url: &str, headers: HeaderMap) -> Result<RawUpstream, A
         status,
         content_type,
         body,
+        retry_after_secs,
     })
 }
 
@@ -140,6 +168,7 @@ pub async fn fetch_normalized_usage(
         return Err(ApiError::Upstream(build_error_message(
             raw.status,
             &raw.content_type,
+            raw.retry_after_secs,
         )));
     }
 

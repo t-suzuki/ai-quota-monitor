@@ -122,6 +122,55 @@ npm run build:zip
 
 `src-tauri/target/release/bundle/zip/AI-Quota-Monitor-<version>-windows-x64.zip` が出力される。
 
+## リリース手順
+
+### 1. バージョンを上げる
+
+以下の3ファイルのバージョン番号を揃えて更新する:
+
+| ファイル | 箇所 |
+|---|---|
+| `package.json` | `"version": "x.y.z"` |
+| `src-tauri/Cargo.toml` | `version = "x.y.z"` |
+| `src-tauri/tauri.conf.json` | `"version": "x.y.z"` |
+
+### 2. テストを実行
+
+```bash
+npm test
+```
+
+### 3. ビルド & Zip 作成
+
+```bash
+npm run build:zip
+```
+
+成功すると `src-tauri/target/release/bundle/zip/AI-Quota-Monitor-<version>-windows-x64.zip` が生成される。
+
+インストーラのみ必要な場合:
+
+```bash
+npm run build:tauri
+# → src-tauri/target/release/bundle/ に NSIS / MSI が出力される
+```
+
+### 4. コミット & タグ
+
+```bash
+git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git commit -m "v<version>"
+git tag v<version>
+git push origin main --tags
+```
+
+### 5. GitHub Release
+
+- `Releases` → `Draft a new release` でタグを選択
+- Zip ファイルをアタッチしてリリースを公開する
+
+---
+
 ## ログイン方法 (推奨)
 
 アプリ内の `🔗 URLコピー` でログインURLをコピーして OAuth ログインできます。トークンは OS のキーチェーンに保存され、`refresh_token` / 有効期限が取れている場合は期限前に自動更新されます。

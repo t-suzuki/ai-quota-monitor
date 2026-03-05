@@ -97,6 +97,8 @@ h1 span { color: var(--ok); }
 .card-status.unknown { background: var(--bg3); color: var(--fg3); }
 .card-status.error { background: rgba(255,161,152,.1); color: var(--fg3); }
 .card-error-message { font-size: 0.72rem; color: var(--crit); }
+.card-rate-limit { font-size: 0.72rem; color: var(--fg3); margin-top: 4px; }
+.rate-limit-countdown { font-variant-numeric: tabular-nums; }
 
 /* Dashboard grid */
 #dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

@@ -21,10 +21,13 @@ const state = {
     pushover: { enabled: false, apiToken: '', userKey: '', critical: true, recovery: true, warning: false },
   },
   usageExport: { enabled: false, path: '' },
+  rateLimitUntil: {}, // { serviceKey: epochMs } — skip polling until this time
+  rateLimitBackoff: {}, // { serviceKey: number } — consecutive 429 count (no retry-after)
 };
 
 const THRESHOLDS_EXHAUSTED = 100;
 const POLL_RING_TICK_MS = 1000;
+const RATE_LIMIT_RETRY_AFTER_RE = /\[retry-after:(\d+)\]/;
 const SETUP_PERSIST_DEBOUNCE_MS = 200;
 const HISTORY_RESET_DROP_PCT = 5;
 const COPY_FEEDBACK_MS = 1500;
@@ -328,6 +331,22 @@ async function pollServiceAccounts(service, accounts, nextServices, worstOf) {
     const serviceKey = `${service}:${acc.id}`;
     const label = `${meta.label}: ${acc.name}`;
 
+    // Skip if currently rate-limited
+    const rateLimitUntil = state.rateLimitUntil[serviceKey] || 0;
+    if (rateLimitUntil > Date.now()) {
+      const prev = state.services[serviceKey];
+      nextServices[serviceKey] = {
+        label,
+        windows: prev?.windows || [],
+        status: prev?.status || 'error',
+        error: prev?.error || 'レート制限中',
+        rateLimitUntil,
+      };
+      continue;
+    }
+    // Clear expired rate-limit entry
+    if (rateLimitUntil) delete state.rateLimitUntil[serviceKey];
+
     // Auto-refresh token if close to expiry
     await tryAutoRefresh(service, acc.id);
 
@@ -351,11 +370,33 @@ async function pollServiceAccounts(service, accounts, nextServices, worstOf) {
       nextServices[serviceKey] = { label, windows, status: worstStatus };
       checkStatusTransition(prev, worstStatus, label, windows);
       anySuccess = true;
+      delete state.rateLimitBackoff[serviceKey]; // reset backoff on success
       log(`${label} 取得成功: ${windows.map(w => `${w.name}=${w.utilization}%`).join(', ')}`);
       upsertDomTokenState(service, acc.id, true);
     } catch (e) {
       const errorMessage = toErrorMessage(e);
-      nextServices[serviceKey] = { label, windows: [], status: 'error', error: errorMessage };
+      const retryMatch = errorMessage.match(RATE_LIMIT_RETRY_AFTER_RE);
+      const is429 = errorMessage.includes('(HTTP 429)');
+      const rateLimitEntry = { label, windows: [], status: 'error', error: errorMessage };
+      if (is429) {
+        const retryDelaySecs = retryMatch ? parseInt(retryMatch[1], 10) : 0;
+        let until;
+        if (retryDelaySecs > 0) {
+          // Explicit positive retry-after: use it and reset backoff counter
+          until = Date.now() + retryDelaySecs * 1000;
+          delete state.rateLimitBackoff[serviceKey];
+        } else {
+          // No retry-after or retry-after: 0 → exponential backoff
+          const backoffCount = state.rateLimitBackoff[serviceKey] || 0;
+          state.rateLimitBackoff[serviceKey] = backoffCount + 1;
+          const baseInterval = state.pollInterval || POLL_INTERVAL_DEFAULT_SEC;
+          const backoffSecs = Math.min(Math.max(baseInterval * Math.pow(2, backoffCount + 1), POLL_INTERVAL_MIN_SEC), 3600);
+          until = Date.now() + backoffSecs * 1000;
+        }
+        state.rateLimitUntil[serviceKey] = until;
+        rateLimitEntry.rateLimitUntil = until;
+      }
+      nextServices[serviceKey] = rateLimitEntry;
       log(`${label} エラー: ${errorMessage}`, 'warn');
     }
   }
@@ -506,12 +547,18 @@ function render() {
     const logoHtml = meta?.icon ? `<span class="card-logo">${meta.icon}</span>` : '';
 
     if (svc.error && svc.windows.length === 0) {
+      const displayError = svc.error.replace(RATE_LIMIT_RETRY_AFTER_RE, '').trim();
+      const initialRemaining = svc.rateLimitUntil ? Math.max(0, Math.ceil((svc.rateLimitUntil - Date.now()) / 1000)) : 0;
+      const rateLimitHtml = (svc.rateLimitUntil && initialRemaining > 0)
+        ? `<div class="card-rate-limit">あと<span class="rate-limit-countdown" data-rate-limit-until="${svc.rateLimitUntil}">${initialRemaining}</span>秒後に再試行</div>`
+        : '';
       return `<div class="card card-${svc.status}">
         <div class="card-header">
           <span class="card-header-left">${logoHtml}<span class="card-label">${svc.label}</span></span>
           <span class="card-status error">エラー</span>
         </div>
-        <div class="card-error-message">${escHtml(svc.error)}</div>
+        <div class="card-error-message">${escHtml(displayError)}</div>
+        ${rateLimitHtml}
       </div>`;
     }
 
@@ -927,8 +974,19 @@ function updateCountdown() {
     pollInterval: state.pollInterval,
     nowMs: Date.now(),
   });
-  if (!timing) return;
-  updatePollStatus(`次回更新: ${timing.remainingSecLabel}秒後`);
+  if (timing) {
+    updatePollStatus(`次回更新: ${timing.remainingSecLabel}秒後`);
+  }
+  // Update rate-limit countdown spans
+  const now = Date.now();
+  document.querySelectorAll('.rate-limit-countdown').forEach((el) => {
+    const until = parseInt(el.dataset.rateLimitUntil, 10);
+    if (!Number.isFinite(until)) return;
+    const remaining = Math.max(0, Math.ceil((until - now) / 1000));
+    el.textContent = String(remaining);
+    const wrapper = el.closest('.card-rate-limit');
+    if (wrapper) wrapper.style.display = remaining === 0 ? 'none' : '';
+  });
 }
 
 function hasUsableToken(acc) {

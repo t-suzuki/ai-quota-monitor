@@ -527,7 +527,7 @@ mod tests {
     #[test]
     fn build_error_returns_sanitized_message() {
         assert_eq!(
-            api_client::build_error_message(401, "application/json"),
+            api_client::build_error_message(401, "application/json", None),
             "Authentication failed (HTTP 401)"
         );
     }
