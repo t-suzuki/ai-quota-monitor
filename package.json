@@ -1,6 +1,6 @@
 {
   "name": "ai-quota-monitor",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "private": true,
   "description": "AI quota monitor",
   "engines": {
