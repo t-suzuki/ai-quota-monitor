@@ -37,11 +37,11 @@ fn default_store() -> crate::Store {
             codex: Vec::new(),
         },
         settings: crate::Settings {
-            poll_interval: 120,
+            poll_interval: 600,
             polling_state: crate::PollingState {
                 active: false,
                 started_at: None,
-                interval: 120,
+                interval: 600,
             },
             window_state: crate::WindowState {
                 mode: "normal".to_string(),
@@ -164,7 +164,7 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
         settings_raw.as_ref().and_then(|s| s.poll_interval),
         base.settings.poll_interval,
         30,
-        600,
+        3600,
     );
 
     let polling_raw = settings_raw.as_ref().and_then(|s| s.polling_state.as_ref());
@@ -172,7 +172,7 @@ fn normalize_store(raw: crate::StoreRaw) -> crate::Store {
         polling_raw.and_then(|p| p.interval),
         poll_interval,
         30,
-        600,
+        3600,
     );
     let polling_started_at = polling_raw.and_then(|p| p.started_at).filter(|n| *n > 0);
 

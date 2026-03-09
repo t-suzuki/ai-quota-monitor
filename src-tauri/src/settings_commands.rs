@@ -11,7 +11,7 @@ pub fn set_settings(app: AppHandle, payload: crate::SetSettingsPayload) -> AppRe
     let mut store = read_store(&app)?;
 
     if let Some(poll_interval) = payload.poll_interval {
-        if (30..=600).contains(&poll_interval) {
+        if (30..=3600).contains(&poll_interval) {
             store.settings.poll_interval = poll_interval;
             if !store.settings.polling_state.active {
                 store.settings.polling_state.interval = poll_interval;

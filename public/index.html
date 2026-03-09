@@ -82,25 +82,16 @@
     <div class="field">
       <label>ポーリング間隔 (秒)</label>
       <div class="row">
-        <input class="input-max-100" type="number" id="poll-interval" value="120" min="30" max="600">
+        <input class="input-max-100" type="number" id="poll-interval" value="600" min="30" max="3600">
       </div>
     </div>
   </details>
 
-  <!-- Notification Settings -->
-  <details class="setup" id="notify-setup">
-    <summary>🔔 通知設定</summary>
-    <div class="field">
-      <label class="check-label"><input type="checkbox" id="notify-critical" checked> クォータが critical / exhausted に悪化した時</label>
-    </div>
-    <div class="field">
-      <label class="check-label"><input type="checkbox" id="notify-recovery" checked> クォータが回復した時 (critical/exhausted → ok)</label>
-    </div>
-    <div class="field">
-      <label class="check-label"><input type="checkbox" id="notify-warning"> クォータが warning に悪化した時</label>
-    </div>
+  <!-- Threshold Settings -->
+  <details class="setup" id="threshold-setup">
+    <summary>📊 ステータス閾値</summary>
     <div class="field threshold-row">
-      <label>閾値 (%)</label>
+      <label>使用率の閾値 (%)</label>
       <div class="row">
         <span class="threshold-label">Warning</span>
         <input class="input-max-70" type="number" id="threshold-warning" value="75" min="1" max="99">
@@ -108,6 +99,18 @@
         <input class="input-max-70" type="number" id="threshold-critical" value="90" min="1" max="99">
         <span class="threshold-label threshold-fixed">Exhausted = 100%</span>
       </div>
+    </div>
+  </details>
+
+  <!-- Desktop Notification Settings -->
+  <details class="setup" id="notify-setup">
+    <summary>🔔 デスクトップ通知設定</summary>
+    <div class="help notify-note">※ Windows の「通知とアクション」設定や集中モードによっては通知が表示されないことがあります。</div>
+    <label class="ext-notify-header">通知する条件</label>
+    <div class="ext-notify-triggers">
+      <label class="check-label"><input type="checkbox" id="notify-warning"> warning に悪化</label>
+      <label class="check-label"><input type="checkbox" id="notify-critical" checked> critical / exhausted に悪化</label>
+      <label class="check-label"><input type="checkbox" id="notify-recovery" checked> 回復 (critical/exhausted → ok)</label>
     </div>
     <div class="field">
       <button class="btn-mini" id="btn-notify-test" type="button">テスト通知を送信</button>
@@ -125,10 +128,11 @@
         <input type="text" id="discord-webhook-url" placeholder="https://discord.com/api/webhooks/...">
       </div>
       <div class="help">サーバー設定 → 連携サービス → ウェブフック から URL を取得できます。</div>
+      <label class="ext-notify-header">通知する条件</label>
       <div class="ext-notify-triggers">
+        <label class="check-label"><input type="checkbox" id="discord-warning"> warning</label>
         <label class="check-label"><input type="checkbox" id="discord-critical" checked> critical / exhausted</label>
         <label class="check-label"><input type="checkbox" id="discord-recovery" checked> 回復 (critical/exhausted → ok)</label>
-        <label class="check-label"><input type="checkbox" id="discord-warning"> warning</label>
       </div>
       <button class="btn-mini ext-notify-test-btn" id="btn-discord-test" type="button">テスト送信</button>
     </div>
@@ -141,10 +145,11 @@
         <input type="text" id="pushover-user-key" placeholder="User Key">
       </div>
       <div class="help">pushover.net でアプリを作成して API Token を取得し、User Key と合わせて設定してください。</div>
+      <label class="ext-notify-header">通知する条件</label>
       <div class="ext-notify-triggers">
+        <label class="check-label"><input type="checkbox" id="pushover-warning"> warning</label>
         <label class="check-label"><input type="checkbox" id="pushover-critical" checked> critical / exhausted</label>
         <label class="check-label"><input type="checkbox" id="pushover-recovery" checked> 回復 (critical/exhausted → ok)</label>
-        <label class="check-label"><input type="checkbox" id="pushover-warning"> warning</label>
       </div>
       <button class="btn-mini ext-notify-test-btn" id="btn-pushover-test" type="button">テスト送信</button>
     </div>

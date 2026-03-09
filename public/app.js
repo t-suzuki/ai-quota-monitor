@@ -6,7 +6,7 @@ const state = {
   pollInFlight: false,
   timer: null,
   pollStartedAt: null,
-  pollInterval: 120,
+  pollInterval: 600,
   ringTimer: null,
   windowMode: 'normal',
   hasSavedMinimalBounds: false,
@@ -35,7 +35,7 @@ const MAX_LOG_ENTRIES = 200;
 const MAX_RENDERED_LOGS = 50;
 const HISTORY_MAX_POINTS = 10;
 const POLL_INTERVAL_MIN_SEC = 30;
-const POLL_INTERVAL_DEFAULT_SEC = 120;
+const POLL_INTERVAL_DEFAULT_SEC = 600;
 const NOTIFY_THRESHOLD_MIN = 1;
 const NOTIFY_THRESHOLD_MAX = 99;
 const NOTIFY_THRESHOLD_WARNING_DEFAULT = 75;
